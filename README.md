@@ -10,6 +10,8 @@ Why? False accusations of AI cheating from flawed detectors or need to prove aut
 
 How? Open source software with lightweight features to get the job done and prove it through replay.
 
+Video Demo: https://youtu.be/3CiOYcWZVtQ
+
 ---
 
 
