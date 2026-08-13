@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Rounded Rich Deep Blue Background (Play on DPC) -->
+  <rect width="512" height="512" rx="112" fill="#082147"/>
+  
+  <!-- Inner Subtle Ring -->
+  <rect x="24" y="24" width="464" height="464" rx="88" fill="none" stroke="#113263" stroke-width="8"/>
+  
+  <!-- Stylized "OR" Monogram (Organic Replay) in Rich Light Blue -->
+  <g transform="translate(0, 0)">
+    <!-- The "O" (Circular Portal) -->
+    <path d="M 180 256 m -70 0 a 70 70 0 1 0 140 0 a 70 70 0 1 0 -140 0" 
+          fill="none" stroke="#9ad0ff" stroke-width="24" stroke-linecap="round"/>
+    
+    <!-- Clock Tick Marks Engraved On the "O" Ring -->
+    <g stroke="#082147" stroke-width="6" stroke-linecap="butt">
+      <line x1="180" y1="170" x2="180" y2="202" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(30 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(60 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(90 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(120 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(150 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(180 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(210 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(240 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(270 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(300 180 256)" />
+      <line x1="180" y1="170" x2="180" y2="202" transform="rotate(330 180 256)" />
+    </g>
+    
+    <!-- The "R" (Regular, Solid Blue) -->
+    <path d="M 290 186 L 290 326" fill="none" stroke="#9ad0ff" stroke-width="24" stroke-linecap="round"/>
+    <path d="M 290 186 L 340 186 C 375 186, 375 250, 340 250 L 290 250" fill="#9ad0ff" stroke="#9ad0ff" stroke-width="24" stroke-linejoin="round" stroke-linecap="round"/>
+    
+    <!-- Solid Play Triangle (>) inside the R's loop -->
+    <polygon points="302,194 302,242 356,218" fill="#082147" />
+    
+    <path d="M 325 250 L 365 326" fill="none" stroke="#9ad0ff" stroke-width="24" stroke-linecap="round"/>
+    
+  </g>
+</svg>
