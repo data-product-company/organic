@@ -98,5 +98,24 @@ When you trigger **Replay Session**, the custom playback player reconstructs you
    * **`clipboard_paste`**: Splices multiline pasted text directly into the coordinates.
 3. **Interactive Scrubber**: Users can pause, scrub to any point in time, alter the speed (from 0.5x up to instant replay), or check the live-updating database audit log.
 
+## 6. Forensic Integrity & Verification
+
+The system employs two distinct validation checks to identify external tampering or unauthorized edits (e.g., text injected outside Organic):
+
+### A. Active File Load Verification (Hash Match)
+Upon loading or saving a document, the application automatically triggers the `verify_document_integrity` command.
+1. It queries the `forensic_log` table for the latest recorded `'save'` event signature:
+   ```sql
+   SELECT content FROM forensic_log WHERE event_type = 'save' ORDER BY id DESC LIMIT 1;
+   ```
+2. It computes the SHA-256 signature of the loaded file's current on-disk content using `generate_content_signature`.
+3. If the signatures mismatch, it indicates that the file was modified externally, breaking the cryptographic chain of custody.
+
+### B. Replay Timeline Verification (Dynamic Keystroke Replay)
+During a **Session Replay**, the player filters out the `'save'` metadata and reconstructs the text by replaying every keystroke sequentially.
+1. At every timestamp corresponding to a `'save'` event, the engine generates a SHA-256 hash of its *replayed, in-memory virtual text buffer*.
+2. It compares this dynamic hash against the original hash stored in the `'save'` event's `content` payload.
+3. Any discrepancy proves that the chronological log has been bypassed or manipulated, indicating unauthorized text insertion.
+
 ---
 *Organic - Human, not A.I. Initiative*

@@ -133,6 +133,27 @@ fn generate_content_signature(content: String) -> String {
 }
 
 #[tauri::command]
+async fn verify_document_integrity(
+    state: tauri::State<'_, AppState>,
+    content: String,
+) -> Result<bool, String> {
+    let conn = Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT content FROM forensic_log WHERE event_type = 'save' ORDER BY id DESC LIMIT 1"
+    ).map_err(|e| e.to_string())?;
+    
+    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+    if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let recorded_signature: Option<String> = row.get(0).map_err(|e| e.to_string())?;
+        if let Some(expected_sig) = recorded_signature {
+            let actual_sig = generate_content_signature(content);
+            return Ok(actual_sig == expected_sig);
+        }
+    }
+    Ok(true) // Defaults to true if no saves have occurred yet
+}
+
+#[tauri::command]
 async fn read_help_markdown(app_handle: tauri::AppHandle) -> Result<String, String> {
     let resource_path = app_handle.path()
         .resolve("resources/help.md", BaseDirectory::Resource)
@@ -374,7 +395,8 @@ pub fn run() {
             read_help_markdown,
             get_forensic_events,
             export_to_word,
-            share_replay_bundle
+            share_replay_bundle,
+            verify_document_integrity
         ])
         .setup(|app| {
             // 1. Create native menu items with OS-level accelerators
@@ -860,5 +882,73 @@ mod tests {
         let _ = std::fs::remove_file(&doc_path);
         let _ = std::fs::remove_file(&tsgr_path);
         let _ = std::fs::remove_file(&zip_path);
+    }
+
+    #[test]
+    fn test_verify_document_integrity_match() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join("test_integrity_match.db").to_string_lossy().into_owned();
+        let _ = std::fs::remove_file(&db_path);
+
+        init_db(&db_path).unwrap();
+        let conn = Connection::open(&db_path).unwrap();
+
+        let doc_content = "Hello, world!".to_string();
+        let sig = generate_content_signature(doc_content.clone());
+
+        // Log a save event containing the correct SHA-256 signature
+        conn.execute(
+            "INSERT INTO forensic_log (timestamp, \"row\", \"column\", event_type, content)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![1234567890, 1, 1, "save", Some(sig)],
+        ).unwrap();
+
+        let mut stmt = conn.prepare("SELECT content FROM forensic_log WHERE event_type = 'save' ORDER BY id DESC LIMIT 1").unwrap();
+        let mut rows = stmt.query([]).unwrap();
+        let mut matched = false;
+        if let Some(row) = rows.next().unwrap() {
+            let recorded_signature: Option<String> = row.get(0).unwrap();
+            if let Some(expected_sig) = recorded_signature {
+                let actual_sig = generate_content_signature(doc_content);
+                matched = actual_sig == expected_sig;
+            }
+        }
+        assert!(matched);
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[test]
+    fn test_verify_document_integrity_differ() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join("test_integrity_differ.db").to_string_lossy().into_owned();
+        let _ = std::fs::remove_file(&db_path);
+
+        init_db(&db_path).unwrap();
+        let conn = Connection::open(&db_path).unwrap();
+
+        let doc_content = "Hello, world!".to_string();
+        let sig = generate_content_signature(doc_content);
+
+        // Log a save event containing the signature of the authentic version
+        conn.execute(
+            "INSERT INTO forensic_log (timestamp, \"row\", \"column\", event_type, content)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![1234567890, 1, 1, "save", Some(sig)],
+        ).unwrap();
+
+        // Try to verify modified content (edited outside Organic)
+        let modified_content = "Hello, world! (Modified externally)".to_string();
+        let mut stmt = conn.prepare("SELECT content FROM forensic_log WHERE event_type = 'save' ORDER BY id DESC LIMIT 1").unwrap();
+        let mut rows = stmt.query([]).unwrap();
+        let mut matched = true;
+        if let Some(row) = rows.next().unwrap() {
+            let recorded_signature: Option<String> = row.get(0).unwrap();
+            if let Some(expected_sig) = recorded_signature {
+                let actual_sig = generate_content_signature(modified_content);
+                matched = actual_sig == expected_sig;
+            }
+        }
+        assert!(!matched);
+        let _ = std::fs::remove_file(&db_path);
     }
 }

@@ -73,6 +73,10 @@ We save files with a `.txt` extension to guarantee absolute simplicity, portabil
 ### Why export specifically as Microsoft Word `.doc` files?
 We restrict direct export to the standard `.doc` format to keep the application incredibly lightweight, fast, and distraction-free. Generating complex, bloated layout structures inside a minimalist editor is unnecessary. Once your draft is exported, you can seamlessly open or import it into Microsoft Word, Google Docs, or LibreOffice to customize margins, headers, and advanced styling exactly to your liking.
 
+### What happens if a document is edited outside of Organic?
+* **For Authors**: If you open and edit your file in another text editor (like Word, Notepad, or an external A.I. tool), Organic will detect that the document's text has changed without any corresponding typing history. When you open the file back up in Organic, it will warn you that the document and its forensic log do not match, meaning your proof of human authorship (the chain of custody) is broken.
+* **For Reviewers**: When auditing a document, you can immediately tell if it has been tampered with. If someone tries to manually paste, insert, or modify text using an external program, the character-by-character Replay Session will fail to recreate the final document. The replay engine will raise an integrity flag, letting you know that the document has been modified outside the secure environment.
+
 ## ⚖️ License & Warranty Disclaimer
 
 **Organic Replay** is proud to be open-source software distributed under the **GNU General Public License, Version 3 (GPLv3)**. 
