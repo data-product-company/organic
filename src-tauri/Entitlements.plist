@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Enables the App Sandbox (Mandatory for Mac App Store) -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- Identifies your app and team -->
+    <key>com.apple.application-identifier</key>
+    <string>7638TSLRA5.company.dataproduct.organicreplay</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>7638TSLRA5</string>
+
+    <!-- Allows outgoing network connections (APIs, WebSocket connections) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Allows read/write access to files selected by the user via file dialogs -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>
