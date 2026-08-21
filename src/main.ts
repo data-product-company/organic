@@ -37,6 +37,11 @@ const ZOOM_STEP = 0.1;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.0;
 
+// Define default styling constants
+const DEFAULT_FONT_FAMILY = "'Courier New', Courier, monospace";
+const DEFAULT_FONT_SIZE = "16px";
+const DEFAULT_FONT_COLOR = "#abb2bf";
+
 async function setZoom(factor: number) {
   currentZoom = Math.min(Math.max(factor, MIN_ZOOM), MAX_ZOOM);
   try {
@@ -441,30 +446,10 @@ async function openFile() {
     lastSavedContent = fileContent;
     hasActiveSession = true;
     isGlobalStyleDirty = false;
-
-    // Restore document-specific font/size if they exist
-    if (currentPath) {
-      const docFont = localStorage.getItem(`organic-font-family:${currentPath}`);
-      const docSize = localStorage.getItem(`organic-font-size:${currentPath}`);
-      if (docFont && fontSelect) {
-        fontSelect.value = docFont;
-        editor.style.fontFamily = docFont;
-      }
-      if (docSize && fontSizeSelect) {
-        fontSizeSelect.value = docSize;
-        editor.style.fontSize = docSize;
-      }
-      const docColor = localStorage.getItem(`organic-font-color:${currentPath}`);
-      if (docColor && colorPicker) {
-        colorPicker.value = docColor;
-        editor.style.color = docColor;
-      }
-    }
-    if (!localStorage.getItem(`organic-font-color:${currentPath}`) && colorPicker) {
-      const savedColor = localStorage.getItem('organic-font-color') || '#abb2bf';
-      colorPicker.value = savedColor;
-      editor.style.color = savedColor;
-    }
+    // Place cursor at the end for existing documents
+    const text = getEditorText(editor);
+    setSelectionByCharacterOffset(editor, text.length, text.length);
+    editor.focus();
 
     updateStatus();
 
@@ -493,19 +478,6 @@ async function saveFile(): Promise<boolean> {
       path: currentPath,
       content: editor.innerHTML,
     });
-
-    // Save document-specific font/size to localStorage under the new path
-    if (savedPath) {
-      if (fontSelect) {
-        localStorage.setItem(`organic-font-family:${savedPath}`, fontSelect.value);
-      }
-      if (fontSizeSelect) {
-        localStorage.setItem(`organic-font-size:${savedPath}`, fontSizeSelect.value);
-      }
-      if (colorPicker) {
-        localStorage.setItem(`organic-font-color:${savedPath}`, colorPicker.value);
-      }
-    }
 
     currentPath = savedPath;
     lastSavedContent = editor.innerHTML;
@@ -646,6 +618,27 @@ async function closeFile(): Promise<boolean> {
     isDirty = false;
     isGlobalStyleDirty = false;
     hasActiveSession = false;
+
+    // Reset editor styles to default
+    editor.style.fontFamily = '';
+    editor.style.fontSize = '';
+    editor.style.color = '';
+
+    // Clear global (non-document-specific) style preferences
+    localStorage.removeItem('organic-font-family');
+    localStorage.removeItem('organic-font-size');
+    localStorage.removeItem('organic-font-color');
+
+    // Reset toolbar UI controls to their default state
+    if (fontSelect) {
+      fontSelect.value = DEFAULT_FONT_FAMILY;
+    }
+    if (fontSizeSelect) {
+      fontSizeSelect.value = DEFAULT_FONT_SIZE;
+    }
+    if (colorPicker) {
+      colorPicker.value = DEFAULT_FONT_COLOR;
+    }
     updateStatus();
     return true;
   } catch (err) {
@@ -666,17 +659,24 @@ async function newFile() {
   hasActiveSession = true;
   isDirty = false;
   isGlobalStyleDirty = false;
+  setSelectionByCharacterOffset(editor, 0, 0);
+  editor.focus();
 
   // Fall back to global preferences for new files
-  const savedFont = localStorage.getItem('organic-font-family');
-  if (savedFont && fontSelect) {
+  const savedFont = localStorage.getItem('organic-font-family') || DEFAULT_FONT_FAMILY;
+  if (fontSelect) {
     fontSelect.value = savedFont;
     editor.style.fontFamily = savedFont;
   }
-  const savedSize = localStorage.getItem('organic-font-size');
-  if (savedSize && fontSizeSelect) {
+  const savedSize = localStorage.getItem('organic-font-size') || DEFAULT_FONT_SIZE;
+  if (fontSizeSelect) {
     fontSizeSelect.value = savedSize;
     editor.style.fontSize = savedSize;
+  }
+  const savedColor = localStorage.getItem('organic-font-color') || DEFAULT_FONT_COLOR;
+  if (colorPicker) {
+    colorPicker.value = savedColor;
+    editor.style.color = savedColor;
   }
 
   updateStatus();
@@ -833,6 +833,37 @@ listen('menu-find', () => {
 
 findInput.addEventListener('input', updateFindResults);
 
+function breakOutOfStyledSpanIfAtEdge() {
+  const sel = window.getSelection();
+  if (!sel || !sel.isCollapsed) return;
+
+  const range = sel.getRangeAt(0);
+  let container = range.startContainer;
+  let parent = container.nodeType === Node.TEXT_NODE ? container.parentNode : container as Node;
+
+  // Check if we are at the end of a text node within a styled span
+  if (
+    container.nodeType === Node.TEXT_NODE &&
+    range.startOffset === container.textContent?.length &&
+    parent &&
+    parent.nodeName === 'SPAN' &&
+    (parent as HTMLElement).style.cssText !== ''
+  ) {
+    // Check if this is the last meaningful content in the editor
+    let currentNode: Node | null = parent;
+    while (currentNode && !currentNode.nextSibling) {
+      if (currentNode.parentNode === editor) {
+        // Move the selection to the very end of the editor content, outside the span
+        sel.collapse(editor, editor.childNodes.length);
+        // Ensure subsequent typing doesn't inherit any lingering styles
+        resetEditorTypingStyle();
+        break;
+      }
+      currentNode = currentNode.parentNode;
+    }
+  }
+}
+
 // Prevent Tab key from losing focus and instead insert a tab character
 editor.addEventListener('keydown', (e: any) => {
   if (e.key === 'Tab') {
@@ -856,6 +887,11 @@ editor.addEventListener('keydown', (e: any) => {
           cancelable: true
         }));
       }
+    }
+  } else {
+    // For any other key press, check if we need to break out of a style
+    if (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
+      breakOutOfStyledSpanIfAtEdge();
     }
   }
 });
@@ -916,6 +952,12 @@ listen('menu-justify', () => {
   updateStatus();
 });
 
+function resetEditorTypingStyle() {
+  editor.style.fontFamily = '';
+  editor.style.fontSize = '';
+  editor.style.color = '';
+}
+
 listen<string>('menu-font', (event) => {
   const font = event.payload;
   if (fontSelect) {
@@ -925,6 +967,10 @@ listen<string>('menu-font', (event) => {
   if (sel && !sel.isCollapsed) {
     (document as any).execCommand('styleWithCSS', false, 'true');
     (document as any).execCommand('fontName', false, font);
+    requestAnimationFrame(() => {
+      sel.collapseToEnd();
+      resetEditorTypingStyle();
+    });
   } else {
     editor.style.fontFamily = font;
     localStorage.setItem('organic-font-family', font);
@@ -941,12 +987,19 @@ function applyColor(color: string) {
   if (sel && !sel.isCollapsed) {
     (document as any).execCommand('styleWithCSS', false, 'true');
     (document as any).execCommand('foreColor', false, color);
+    requestAnimationFrame(() => {
+      sel.collapseToEnd();
+      resetEditorTypingStyle();
+    });
   } else {
-    editor.style.color = color;
-    localStorage.setItem('organic-font-color', color);
-    if (hasActiveSession) {
-      isGlobalStyleDirty = true;
-    }
+    // No selection: apply color to the next typed characters by creating a temporary styled span.
+    const span = document.createElement('span');
+    span.style.color = color;
+    span.innerHTML = '&#8203;'; // Zero-width space
+    (document as any).execCommand('insertHTML', false, span.outerHTML);
+    
+    // The cursor is now inside the span, ready for typing.
+    // The 'breakOutOfStyledSpanIfAtEdge' logic will handle exiting the span.
   }
   editor.focus();
   updateStatus();
@@ -974,6 +1027,10 @@ listen<string>('menu-size', (event) => {
       const htmlEl = el as HTMLElement;
       htmlEl.removeAttribute('size');
       htmlEl.style.fontSize = size;
+    });
+    requestAnimationFrame(() => {
+      sel.collapseToEnd();
+      resetEditorTypingStyle();
     });
   } else {
     editor.style.fontSize = size;
@@ -1263,6 +1320,10 @@ function syncDropdownsWithCaret() {
       const matchedSize = findMatchingOption(fontSizeSelect, computedStyle.fontSize, true);
       if (matchedSize) fontSizeSelect.value = matchedSize;
     }
+    if (colorPicker) {
+      const color = computedStyle.color;
+      colorPicker.value = rgbToHex(color);
+    }
   }
 }
 
@@ -1279,15 +1340,26 @@ document.addEventListener('selectionchange', () => {
   }
 });
 
+function rgbToHex(rgb: string): string {
+  const result = rgb.match(/\d+/g);
+  if (!result) return '#000000';
+  return "#" + result.map(x => {
+    const hex = parseInt(x).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  }).join('');
+}
+
 // Initialize status bar on startup
 updateStatus();
 
 // Initialize font color on startup and bind change handler
 if (colorPicker) {
-  const savedColor = localStorage.getItem('organic-font-color');
+  const savedColor = localStorage.getItem('organic-font-color') || DEFAULT_FONT_COLOR;
   if (savedColor) {
     colorPicker.value = savedColor;
-    editor.style.color = savedColor;
+    if (!hasActiveSession) {
+      editor.style.color = savedColor;
+    }
   }
   colorPicker.addEventListener('input', () => {
     const color = colorPicker.value;
@@ -1297,10 +1369,12 @@ if (colorPicker) {
 
 // Initialize font on startup and bind change handler
 if (fontSelect) {
-  const savedFont = localStorage.getItem('organic-font-family');
+  const savedFont = localStorage.getItem('organic-font-family') || DEFAULT_FONT_FAMILY;
   if (savedFont) {
     fontSelect.value = savedFont;
-    editor.style.fontFamily = savedFont;
+    if (!hasActiveSession) {
+      editor.style.fontFamily = savedFont;
+    }
   }
   fontSelect.addEventListener('change', () => {
     const font = fontSelect.value;
@@ -1322,10 +1396,12 @@ if (fontSelect) {
 
 // Initialize font size on startup and bind change handler
 if (fontSizeSelect) {
-  const savedSize = localStorage.getItem('organic-font-size');
+  const savedSize = localStorage.getItem('organic-font-size') || DEFAULT_FONT_SIZE;
   if (savedSize) {
     fontSizeSelect.value = savedSize;
-    editor.style.fontSize = savedSize;
+    if (!hasActiveSession) {
+      editor.style.fontSize = savedSize;
+    }
   }
   fontSizeSelect.addEventListener('change', () => {
     const size = fontSizeSelect.value;
