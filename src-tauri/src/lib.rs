@@ -351,6 +351,79 @@ async fn log_forensic_event(
     Ok(())
 }
 
+#[tauri::command]
+fn get_system_font_families() -> Vec<String> {
+    let mut families = std::collections::HashSet::new();
+    let mut paths = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        paths.push("/Library/Fonts".to_string());
+        paths.push("/System/Library/Fonts".to_string());
+        if let Ok(home) = std::env::var("HOME") {
+            paths.push(format!("{}/Library/Fonts", home));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(windir) = std::env::var("windir") {
+            paths.push(format!("{}\\Fonts", windir));
+        } else {
+            paths.push("C:\\Windows\\Fonts".to_string());
+        }
+        if let Ok(userprofile) = std::env::var("USERPROFILE") {
+            paths.push(format!("{}\\AppData\\Local\\Microsoft\\Windows\\Fonts", userprofile));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        paths.push("/usr/share/fonts".to_string());
+        paths.push("/usr/local/share/fonts".to_string());
+        if let Ok(home) = std::env::var("HOME") {
+            paths.push(format!("{}/.local/share/fonts", home));
+            paths.push(format!("{}/.fonts", home));
+        }
+    }
+
+    fn scan_dir(dir: &Path, families: &mut std::collections::HashSet<String>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    scan_dir(&path, families);
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    let ext_lower = ext.to_lowercase();
+                    if ext_lower == "ttf" || ext_lower == "otf" || ext_lower == "ttc" {
+                        if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            let clean_name = file_stem
+                                .split('-')
+                                .next()
+                                .unwrap_or(file_stem)
+                                .replace("MT", "")
+                                .replace("Regular", "")
+                                .trim()
+                                .to_string();
+                            if !clean_name.is_empty() {
+                                families.insert(clean_name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for path_str in paths {
+        scan_dir(Path::new(&path_str), &mut families);
+    }
+
+    let mut result: Vec<String> = families.into_iter().collect();
+    result.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    result
+}
+
 fn init_db(db_path: &str) -> Result<(), String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
     conn.execute(
@@ -396,7 +469,8 @@ pub fn run() {
             get_forensic_events,
             export_to_word,
             share_replay_bundle,
-            verify_document_integrity
+            verify_document_integrity,
+            get_system_font_families
         ])
         .setup(|app| {
             // 1. Create native menu items with OS-level accelerators
@@ -810,6 +884,12 @@ mod tests {
     fn test_greet() {
         let greeting = greet("Nikhil");
         assert_eq!(greeting, "Hello, Nikhil! You've been greeted from Rust!");
+    }
+
+    #[test]
+    fn test_get_system_font_families() {
+        let families = get_system_font_families();
+        assert!(families.len() >= 0);
     }
 
     #[test]

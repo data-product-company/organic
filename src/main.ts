@@ -87,7 +87,7 @@ const MAX_ZOOM = 3.0;
 // Define default styling constants
 const DEFAULT_FONT_FAMILY = "'Courier New', Courier, monospace";
 const DEFAULT_FONT_SIZE = "16px";
-const DEFAULT_FONT_COLOR = "#abb2bf";
+const DEFAULT_FONT_COLOR = "#ffffff";
 
 async function setZoom(factor: number) {
   currentZoom = Math.min(Math.max(factor, MIN_ZOOM), MAX_ZOOM);
@@ -476,6 +476,11 @@ editor.style.marginBottom = '40px';
 // Open File Helper
 async function openFile() {
   try {
+    if (hasActiveSession) {
+      const closed = await closeFile();
+      if (!closed) return;
+    }
+
     const result = await invoke<[string, string]>('open_document');
     currentPath = result[0];
     let fileContent = result[1];
@@ -487,6 +492,11 @@ async function openFile() {
         fileContent = bodyMatch[1];
       }
     }
+
+    // Clear any custom inline editor container styles before setting new document content
+    editor.style.fontFamily = '';
+    editor.style.fontSize = '';
+    editor.style.color = '';
 
     editor.innerHTML = fileContent;
     editor.contentEditable = "true";
@@ -720,6 +730,11 @@ async function closeFile(): Promise<boolean> {
 
 // New File Helper
 async function newFile() {
+  // Capture currently selected dropdown values before closing the previous file
+  const currentSelectedFont = fontSelect?.value;
+  const currentSelectedSize = fontSizeSelect?.value;
+  const currentSelectedColor = colorPicker?.value;
+
   const closed = await closeFile();
   if (!closed) return;
 
@@ -730,24 +745,51 @@ async function newFile() {
   hasActiveSession = true;
   isDirty = false;
   isGlobalStyleDirty = false;
-  setSelectionByCharacterOffset(editor, 0, 0);
-  editor.focus();
 
-  // Fall back to global preferences for new files
-  const savedFont = localStorage.getItem('organic-font-family') || DEFAULT_FONT_FAMILY;
+  // Fall back to captured preferences, global preferences, or defaults
+  const savedFont = currentSelectedFont || localStorage.getItem('organic-font-family') || DEFAULT_FONT_FAMILY;
   if (fontSelect) {
-    fontSelect.value = savedFont;
+    const matched = findMatchingOption(fontSelect, savedFont, false);
+    if (matched) {
+      fontSelect.value = matched;
+    } else {
+      const option = document.createElement('option');
+      option.value = savedFont;
+      option.textContent = savedFont.replace(/['"]/g, '').split(',')[0];
+      fontSelect.appendChild(option);
+      fontSelect.value = savedFont;
+    }
     editor.style.fontFamily = savedFont;
   }
-  const savedSize = localStorage.getItem('organic-font-size') || DEFAULT_FONT_SIZE;
+  const savedSize = currentSelectedSize || localStorage.getItem('organic-font-size') || DEFAULT_FONT_SIZE;
   if (fontSizeSelect) {
-    fontSizeSelect.value = savedSize;
+    const matched = findMatchingOption(fontSizeSelect, savedSize, true);
+    if (matched) {
+      fontSizeSelect.value = matched;
+    } else {
+      const option = document.createElement('option');
+      option.value = savedSize;
+      option.textContent = savedSize;
+      fontSizeSelect.appendChild(option);
+      fontSizeSelect.value = savedSize;
+    }
     editor.style.fontSize = savedSize;
   }
-  const savedColor = localStorage.getItem('organic-font-color') || DEFAULT_FONT_COLOR;
+  const savedColor = currentSelectedColor || localStorage.getItem('organic-font-color') || DEFAULT_FONT_COLOR;
   if (colorPicker) {
     colorPicker.value = savedColor;
     editor.style.color = savedColor;
+  }
+
+  // Force focus and explicitly set a selection range inside the empty editor to display the caret
+  editor.focus();
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(true);
+  const sel = window.getSelection();
+  if (sel) {
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
   updateStatus();
@@ -922,6 +964,16 @@ function breakOutOfStyledSpanIfAtEdge() {
     parent.nodeName === 'SPAN' &&
     (parent as HTMLElement).style.cssText !== ''
   ) {
+    // If the span only contains zero-width spaces, do not break out of it yet.
+    if (/^[\u200b]+$/.test(container.textContent || '')) {
+      return;
+    }
+
+    // If this styled span is nested inside another styled span, do not break out to the editor root.
+    if (parent.parentNode !== editor) {
+      return;
+    }
+
     // Check if this is the last meaningful content in the editor
     let currentNode: Node | null = parent;
     while (currentNode && !currentNode.nextSibling) {
@@ -1038,26 +1090,95 @@ function resetEditorTypingStyle() {
 listen<string>('menu-font', (event) => {
   const font = event.payload;
   if (fontSelect) {
-    fontSelect.value = font;
-  }
-  const sel = window.getSelection();
-  if (sel && !sel.isCollapsed) {
-    (document as any).execCommand('styleWithCSS', false, 'true');
-    (document as any).execCommand('fontName', false, font);
-    requestAnimationFrame(() => {
-      sel.collapseToEnd();
-      resetEditorTypingStyle();
-    });
-  } else {
-    editor.style.fontFamily = font;
-    localStorage.setItem('organic-font-family', font);
-    if (hasActiveSession) {
-      isGlobalStyleDirty = true;
+    const matched = findMatchingOption(fontSelect, font, false);
+    if (matched) {
+      fontSelect.value = matched;
+    } else {
+      const option = document.createElement('option');
+      option.value = font;
+      option.textContent = font.replace(/['"]/g, '').split(',')[0];
+      fontSelect.appendChild(option);
+      fontSelect.value = font;
     }
   }
-  editor.focus();
-  updateStatus();
+  applyFontFamily(font);
 });
+
+function insertStyledSpan(styles: { color?: string, fontFamily?: string, fontSize?: string }) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+
+  const range = sel.getRangeAt(0);
+  let container = range.startContainer;
+  let parent = container.nodeType === Node.TEXT_NODE ? container.parentNode as HTMLElement : container as HTMLElement;
+
+  const color = styles.color || (colorPicker ? colorPicker.value : '');
+  const fontFamily = styles.fontFamily || (fontSelect ? fontSelect.value : '');
+  const fontSize = styles.fontSize || (fontSizeSelect ? fontSizeSelect.value : '');
+
+  // Case 1: We are inside an existing styled span that only contains zero-width spaces/is empty
+  if (
+    parent &&
+    parent.nodeName === 'SPAN' &&
+    parent !== editor &&
+    (parent.style.cssText !== '' || parent.hasAttribute('style')) &&
+    /^[\u200b]*$/.test(parent.textContent || '')
+  ) {
+    if (color) parent.style.color = color;
+    if (fontFamily) parent.style.fontFamily = fontFamily;
+    if (fontSize) parent.style.fontSize = fontSize;
+    
+    // Ensure it has two zero-width spaces and place cursor in the middle
+    parent.innerHTML = '&#8203;&#8203;';
+    const newRange = document.createRange();
+    newRange.setStart(parent.firstChild!, 1);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+    return;
+  }
+
+  // Case 2: We are inside a styled span with actual text, at the end of it
+  if (
+    parent &&
+    parent.nodeName === 'SPAN' &&
+    parent !== editor &&
+    container.nodeType === Node.TEXT_NODE &&
+    range.startOffset === container.textContent?.length
+  ) {
+    const span = document.createElement('span');
+    if (color) span.style.color = color;
+    if (fontFamily) span.style.fontFamily = fontFamily;
+    if (fontSize) span.style.fontSize = fontSize;
+    span.innerHTML = '&#8203;&#8203;';
+
+    // Insert as a sibling after the parent span
+    parent.parentNode!.insertBefore(span, parent.nextSibling);
+
+    const newRange = document.createRange();
+    newRange.setStart(span.firstChild!, 1);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+    return;
+  }
+
+  // Case 3: Default fallback (not inside a styled span, or in the middle of text)
+  const span = document.createElement('span');
+  if (color) span.style.color = color;
+  if (fontFamily) span.style.fontFamily = fontFamily;
+  if (fontSize) span.style.fontSize = fontSize;
+  span.innerHTML = '&#8203;&#8203;';
+
+  range.deleteContents();
+  range.insertNode(span);
+
+  const newRange = document.createRange();
+  newRange.setStart(span.firstChild!, 1);
+  newRange.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(newRange);
+}
 
 function applyColor(color: string) {
   const sel = window.getSelection();
@@ -1068,33 +1189,34 @@ function applyColor(color: string) {
       sel.collapseToEnd();
       resetEditorTypingStyle();
     });
-  } else {
-    // No selection: apply color to the next typed characters by creating a temporary styled span.
-    const span = document.createElement('span');
-    span.style.color = color;
-    span.innerHTML = '&#8203;'; // Zero-width space
-    (document as any).execCommand('insertHTML', false, span.outerHTML);
-    
-    // The cursor is now inside the span, ready for typing.
-    // The 'breakOutOfStyledSpanIfAtEdge' logic will handle exiting the span.
+  } else if (sel && sel.rangeCount > 0) {
+    insertStyledSpan({ color });
   }
   editor.focus();
   updateStatus();
 }
 
-listen<string>('menu-color', (event) => {
-  const color = event.payload;
-  if (colorPicker) {
-    colorPicker.value = color;
+function applyFontFamily(font: string) {
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) {
+    (document as any).execCommand('styleWithCSS', false, 'true');
+    (document as any).execCommand('fontName', false, font);
+    requestAnimationFrame(() => {
+      sel.collapseToEnd();
+      resetEditorTypingStyle();
+    });
+  } else if (sel && sel.rangeCount > 0) {
+    insertStyledSpan({ fontFamily: font });
   }
-  applyColor(color);
-});
+  localStorage.setItem('organic-font-family', font);
+  if (hasActiveSession) {
+    isGlobalStyleDirty = true;
+  }
+  editor.focus();
+  updateStatus();
+}
 
-listen<string>('menu-size', (event) => {
-  const size = event.payload;
-  if (fontSizeSelect) {
-    fontSizeSelect.value = size;
-  }
+function applyFontSize(size: string) {
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed) {
     (document as any).execCommand('styleWithCSS', false, 'true');
@@ -1109,15 +1231,47 @@ listen<string>('menu-size', (event) => {
       sel.collapseToEnd();
       resetEditorTypingStyle();
     });
-  } else {
-    editor.style.fontSize = size;
-    localStorage.setItem('organic-font-size', size);
+  } else if (sel && sel.rangeCount > 0) {
+    insertStyledSpan({ fontSize: size });
+  }
+  localStorage.setItem('organic-font-size', size);
+  if (hasActiveSession) {
+    isGlobalStyleDirty = true;
+  }
+  editor.focus();
+  updateStatus();
+}
+
+listen<string>('menu-color', (event) => {
+  const color = event.payload;
+  if (colorPicker) {
+    colorPicker.value = color;
+  }
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) {
+    localStorage.setItem('organic-font-color', color);
     if (hasActiveSession) {
       isGlobalStyleDirty = true;
     }
   }
-  editor.focus();
-  updateStatus();
+  applyColor(color);
+});
+
+listen<string>('menu-size', (event) => {
+  const size = event.payload;
+  if (fontSizeSelect) {
+    const matched = findMatchingOption(fontSizeSelect, size, true);
+    if (matched) {
+      fontSizeSelect.value = matched;
+    } else {
+      const option = document.createElement('option');
+      option.value = size;
+      option.textContent = size;
+      fontSizeSelect.appendChild(option);
+      fontSizeSelect.value = size;
+    }
+  }
+  applyFontSize(size);
 });
 
 // Listen for typing/input changes
@@ -1433,41 +1587,101 @@ updateStatus();
 if (colorPicker) {
   const savedColor = localStorage.getItem('organic-font-color') || DEFAULT_FONT_COLOR;
   if (savedColor) {
-    colorPicker.value = savedColor;
+    const hexColor = savedColor.startsWith('rgb') ? rgbToHex(savedColor) : savedColor;
+    colorPicker.value = hexColor;
     if (!hasActiveSession) {
       editor.style.color = savedColor;
     }
   }
   colorPicker.addEventListener('input', () => {
     const color = colorPicker.value;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) {
+      localStorage.setItem('organic-font-color', color);
+      if (hasActiveSession) {
+        isGlobalStyleDirty = true;
+      }
+    }
     applyColor(color);
   });
 }
 
 // Initialize font on startup and bind change handler
 if (fontSelect) {
+  // Define standard cross-platform system fonts as immediate fallback options
+  const FALLBACK_SYSTEM_FONTS = [
+    "Arial", "Arial Black", "Baskerville", "Brush Script MT", "Calibri", "Cambria", 
+    "Comic Sans MS", "Consolas", "Courier", "Courier New", "Garamond", "Georgia", 
+    "Helvetica", "Helvetica Neue", "Impact", "Lucida Console", "Lucida Sans Unicode", 
+    "Menlo", "Monaco", "Palatino", "Segoe UI", "Tahoma", "Times New Roman", 
+    "Trebuchet MS", "Ubuntu", "Verdana", "-apple-system", "system-ui"
+  ];
+
+  const existingValues = new Set(Array.from(fontSelect.options).map(opt => opt.value));
+  FALLBACK_SYSTEM_FONTS.sort().forEach(font => {
+    if (!existingValues.has(font)) {
+      const option = document.createElement('option');
+      option.value = font;
+      option.textContent = font;
+      fontSelect.appendChild(option);
+      existingValues.add(font);
+    }
+  });
+
+  // Dynamically load all available system fonts using Local Font Access API upon user interaction
+  const loadLocalFonts = async () => {
+    if (fontSelect.dataset.loaded === "true") return;
+    try {
+      const availableFonts = await invoke<string[]>('get_system_font_families');
+      const currentVal = fontSelect.value;
+      availableFonts.forEach(family => {
+        if (!existingValues.has(family)) {
+          const option = document.createElement('option');
+          option.value = family;
+          option.textContent = family;
+          fontSelect.appendChild(option);
+          existingValues.add(family);
+        }
+      });
+      fontSelect.dataset.loaded = "true";
+      fontSelect.value = currentVal;
+      // Clean up global triggers once successfully loaded
+      window.removeEventListener('mousedown', loadLocalFonts);
+      window.removeEventListener('keydown', loadLocalFonts);
+    } catch (err) {
+      console.warn("Failed to load native system fonts:", err);
+    }
+  };
+
+  // Eagerly load local system fonts on startup asynchronously
+  loadLocalFonts();
+
+  // Listen for the very first user interaction globally to fetch the fonts in the background,
+  // satisfying the user activation requirement before the dropdown is even clicked.
+  window.addEventListener('mousedown', loadLocalFonts);
+  window.addEventListener('keydown', loadLocalFonts);
+
+  fontSelect.addEventListener('focus', loadLocalFonts);
+  fontSelect.addEventListener('click', loadLocalFonts);
+
   const savedFont = localStorage.getItem('organic-font-family') || DEFAULT_FONT_FAMILY;
   if (savedFont) {
-    fontSelect.value = savedFont;
+    const matched = findMatchingOption(fontSelect, savedFont, false);
+    if (matched) {
+      fontSelect.value = matched;
+    } else {
+      const option = document.createElement('option');
+      option.value = savedFont;
+      option.textContent = savedFont.replace(/['"]/g, '').split(',')[0];
+      fontSelect.appendChild(option);
+      fontSelect.value = savedFont;
+    }
     if (!hasActiveSession) {
       editor.style.fontFamily = savedFont;
     }
   }
   fontSelect.addEventListener('change', () => {
-    const font = fontSelect.value;
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) {
-      (document as any).execCommand('styleWithCSS', false, 'true');
-      (document as any).execCommand('fontName', false, font);
-    } else {
-      editor.style.fontFamily = font;
-      localStorage.setItem('organic-font-family', font);
-      if (hasActiveSession) {
-        isGlobalStyleDirty = true;
-      }
-    }
-    editor.focus();
-    updateStatus();
+    applyFontFamily(fontSelect.value);
   });
 }
 
@@ -1475,32 +1689,22 @@ if (fontSelect) {
 if (fontSizeSelect) {
   const savedSize = localStorage.getItem('organic-font-size') || DEFAULT_FONT_SIZE;
   if (savedSize) {
-    fontSizeSelect.value = savedSize;
+    const matched = findMatchingOption(fontSizeSelect, savedSize, true);
+    if (matched) {
+      fontSizeSelect.value = matched;
+    } else {
+      const option = document.createElement('option');
+      option.value = savedSize;
+      option.textContent = savedSize;
+      fontSizeSelect.appendChild(option);
+      fontSizeSelect.value = savedSize;
+    }
     if (!hasActiveSession) {
       editor.style.fontSize = savedSize;
     }
   }
   fontSizeSelect.addEventListener('change', () => {
-    const size = fontSizeSelect.value;
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) {
-      (document as any).execCommand('styleWithCSS', false, 'true');
-      (document as any).execCommand('fontSize', false, '7');
-      const elements = editor.querySelectorAll('font[size="7"], span[style*="xxx-large"]');
-      elements.forEach((el) => {
-        const htmlEl = el as HTMLElement;
-        htmlEl.removeAttribute('size');
-        htmlEl.style.fontSize = size;
-      });
-    } else {
-      editor.style.fontSize = size;
-      localStorage.setItem('organic-font-size', size);
-      if (hasActiveSession) {
-        isGlobalStyleDirty = true;
-      }
-    }
-    editor.focus();
-    updateStatus();
+    applyFontSize(fontSizeSelect.value);
   });
 }
 
