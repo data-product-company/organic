@@ -21,6 +21,53 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCaretOffset, getLineAndColumnFromOffset, getEditorText } from './utils';
 
+// Inject print-only stylesheet to hide toolbars, status-bar, modals, etc., during printing
+const printStyle = document.createElement('style');
+printStyle.textContent = `
+  @media print {
+    @page {
+      margin: 0.5in;
+    }
+    header, footer, nav, aside,
+    #toolbar, .toolbar,
+    #status-bar, .status-bar,
+    #find-replace-container, #link-modal, #close-modal, #toast,
+    button, select, input, textarea,
+    .no-print {
+      display: none !important;
+    }
+    html, body {
+      background: #fff !important;
+      color: #000 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+    #editor {
+      position: static !important;
+      width: 100% !important;
+      height: auto !important;
+      overflow: visible !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      color: #000 !important;
+      line-height: 1.5 !important;
+    }
+    #editor * {
+      color: #000 !important;
+      background: transparent !important;
+      line-height: 1.5 !important;
+      height: auto !important;
+    }
+  }
+`;
+document.head.appendChild(printStyle);
+
 let currentPath: string | null = null;
 let lastSavedContent: string = "";
 let isDirty: boolean = false;
@@ -110,7 +157,7 @@ if (textarea && textarea.tagName === 'TEXTAREA') {
 } else {
   editor = document.getElementById('editor') as HTMLElement;
 }
-
+const btnPrint = document.getElementById('btn-print') as HTMLButtonElement;
 const btnNew = document.getElementById('btn-new') as HTMLButtonElement | null;
 const btnOpen = document.getElementById('btn-open') as HTMLButtonElement;
 const btnSave = document.getElementById('btn-save') as HTMLButtonElement;
@@ -582,6 +629,30 @@ async function shareBundle() {
   }
 }
 
+// Print Document Helper
+async function printDocument() {
+  if (!hasActiveSession) return;
+
+  const originalTitle = document.title;
+  try {
+    // Set document.title to filename (without extension) or "Untitled" for a clean default PDF name
+    const displayName = currentPath ? (currentPath.split(/[/\\]/).pop() || currentPath).replace(/\.[^/.]+$/, "") : "Untitled";
+    document.title = displayName;
+
+    // Call standard web/webview print dialog synchronously
+    window.print();
+
+    // Log the forensic event after triggering print
+    const { line, column } = getLineAndColumnFromOffset(getEditorText(editor), 0);
+    await logForensicEvent('print', line, column, null);
+  } catch (err) {
+    console.error("Print failed:", err);
+    showToast(`Print failed: ${err}`);
+  } finally {
+    document.title = originalTitle;
+  }
+}
+
 // Close File Helper
 async function closeFile(): Promise<boolean> {
   let savedOrDiscarded = false;
@@ -732,6 +803,8 @@ if (btnNew) {
 }
 btnOpen.addEventListener('click', openFile);
 btnSave.addEventListener('click', saveFile);
+btnPrint.addEventListener('mousedown', (e) => e.preventDefault());
+btnPrint.addEventListener('click', () => printDocument());
 if (btnShareBundle) {
   btnShareBundle.addEventListener('click', shareBundle);
 }
@@ -903,6 +976,10 @@ listen('menu-open', async () => {
 
 listen('menu-save', async () => {
   await saveFile();
+});
+
+listen('menu-print', () => {
+  printDocument();
 });
 
 listen('menu-export-word', async () => {
@@ -1428,54 +1505,53 @@ if (fontSizeSelect) {
 }
 
 // Keyboard Shortcuts (Keystrokes Capture)
-window.addEventListener('keydown', async (e) => {
+window.addEventListener('keydown', (e) => {
   // Platform-agnostic modifier key check (Control on Win/Linux, Command on macOS)
   const isModifier = e.ctrlKey || e.metaKey;
 
-  if (isModifier) {
-    switch (e.key.toLowerCase()) {
-      case 'n':
-        e.preventDefault();
-        await newFile();
-        break;
-      case 's':
-        if (e.shiftKey) {
+  // Handle all other shortcuts asynchronously
+  const handleAsyncShortcuts = async () => {
+    if (isModifier) {
+      switch (e.key.toLowerCase()) {
+        case 'n':
           e.preventDefault();
-          await exportToWord();
-        } else {
-          e.preventDefault(); // Prevent standard browser save dialog
-          await saveFile();
-        }
-        break;
-      case 'o':
-        e.preventDefault(); // Prevent standard browser open dialog
-        await openFile();
-        break;
-      case 'p':
-        if (e.shiftKey) {
+          await newFile();
+          break;
+        case 's':
+          if (e.shiftKey) {
+            e.preventDefault();
+            await exportToWord();
+          } else {
+            e.preventDefault();
+            await saveFile();
+          }
+          break;
+        case 'o':
           e.preventDefault();
-          await shareBundle();
-        }
-        break;
-      case 'f':
-        e.preventDefault();
-        toggleFindReplace(true);
-        break;
-      case '=':
-      case '+':
-        e.preventDefault();
-        await setZoom(currentZoom + ZOOM_STEP);
-        break;
-      case '-':
-        e.preventDefault();
-        await setZoom(currentZoom - ZOOM_STEP);
-        break;
-      case '0':
-        e.preventDefault();
-        await setZoom(1.0);
-        break;
+          await openFile();
+          break;
+        case 'p': // Share Bundle (Cmd+Shift+P)
+          if (e.shiftKey) {
+            e.preventDefault();
+            await shareBundle();
+          } else {
+            // Print
+            e.preventDefault();
+            await printDocument();
+          }
+          break;
+        case 'f':
+          e.preventDefault();
+          toggleFindReplace(true);
+          break;
+        case '=': case '+': e.preventDefault(); await setZoom(currentZoom + ZOOM_STEP); break;
+        case '-': e.preventDefault(); await setZoom(currentZoom - ZOOM_STEP); break;
+        case '0': e.preventDefault(); await setZoom(1.0); break;
+      }
     }
-  }
+  };
+
+  handleAsyncShortcuts();
 });
 
 // Emit active signal so auxiliary windows can reload/sync

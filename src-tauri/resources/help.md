@@ -26,6 +26,7 @@ Organic is a minimalist, distraction-free document editor designed with formatti
 - **New Document**: `CmdOrCtrl + N`
 - **Open Document**: `CmdOrCtrl + O`
 - **Save Document**: `CmdOrCtrl + S`
+- **Print Document**: `CmdOrCtrl + P`
 - **Share Replay Bundle**: `CmdOrCtrl + Shift + P`
 - **Export to Word**: `CmdOrCtrl + Shift + S`
 - **Close Document**: `CmdOrCtrl + W`

@@ -412,6 +412,10 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+S")
                 .build(app)?;
 
+            let print_item = MenuItemBuilder::with_id("print", "Print")
+                .accelerator("CmdOrCtrl+P")
+                .build(app)?;
+
             let share_bundle_item = MenuItemBuilder::with_id("share_bundle", "Share Replay Bundle (.zip)")
                 .accelerator("CmdOrCtrl+Shift+P")
                 .build(app)?;
@@ -529,6 +533,8 @@ pub fn run() {
                 .item(&new_item)
                 .item(&open_item)
                 .item(&save_item)
+                .item(&PredefinedMenuItem::separator(app)?)
+                .item(&print_item)
                 .item(&export_word_item)
                 .item(&share_bundle_item)
                 .item(&close_item)
@@ -632,6 +638,7 @@ pub fn run() {
                     "new_doc" => { let _ = app_handle.emit("menu-new", ()); }
                     "open" => { let _ = app_handle.emit("menu-open", ()); }
                     "save" => { let _ = app_handle.emit("menu-save", ()); }
+                    "print" => { let _ = app_handle.emit("menu-print", ()); }
                     "export_word" => { let _ = app_handle.emit("menu-export-word", ()); }
                     "share_bundle" => { let _ = app_handle.emit("menu-share-bundle", ()); }
                     "close_doc" => { let _ = app_handle.emit("menu-close-doc", ()); }
