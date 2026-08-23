@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getLineAndColumnFromOffset, getCaretOffset, getEditorText, getEditorLines } from './utils';
+import { getLineAndColumnFromOffset, getCaretOffset, getEditorText, getEditorLines, rgbToHex, findMatchingOption } from './utils';
 
 describe('getLineAndColumnFromOffset', () => {
   it('calculates line and column on a single line', () => {
@@ -160,5 +160,63 @@ describe('Hello World Document Integration', () => {
 
     expect(getEditorLines(root)).toEqual(expectedLines);
     expect(getEditorText(root)).toBe(expectedLines.join("\n"));
+  });
+});
+
+describe('rgbToHex conversion utility', () => {
+  it('converts basic rgb strings to hex format', () => {
+    expect(rgbToHex('rgb(255, 255, 255)')).toBe('#ffffff');
+    expect(rgbToHex('rgb(224, 108, 117)')).toBe('#e06c75');
+    expect(rgbToHex('rgb(0, 0, 0)')).toBe('#000000');
+  });
+
+  it('converts rgba strings and single-digit components cleanly', () => {
+    expect(rgbToHex('rgba(119, 187, 65, 0.8)')).toBe('#77bb41');
+    expect(rgbToHex('rgb(9, 15, 8)')).toBe('#090f08');
+  });
+
+  it('handles invalid input scenarios gracefully', () => {
+    expect(rgbToHex('invalid-format')).toBe('#000000');
+  });
+});
+
+describe('findMatchingOption dropdown helper', () => {
+  it('identifies exact style option matches', () => {
+    const select = document.createElement('select');
+    const opt = document.createElement('option');
+    opt.value = 'Georgia, serif';
+    select.appendChild(opt);
+
+    expect(findMatchingOption(select, 'Georgia, serif', false)).toBe('Georgia, serif');
+  });
+
+  it('falls back to token and keyword mapping for system fallback fonts', () => {
+    const select = document.createElement('select');
+    const optSystem = document.createElement('option');
+    optSystem.value = 'system-ui, -apple-system, sans-serif';
+    const optCourier = document.createElement('option');
+    optCourier.value = "'Courier New', Courier, monospace";
+    select.appendChild(optSystem);
+    select.appendChild(optCourier);
+
+    expect(findMatchingOption(select, 'Helvetica Neue', false)).toBe('system-ui, -apple-system, sans-serif');
+    expect(findMatchingOption(select, 'Courier', false)).toBe("'Courier New', Courier, monospace");
+  });
+
+  it('resolves floating point equivalents and string values for font sizes', () => {
+    const select = document.createElement('select');
+    const opt16 = document.createElement('option');
+    opt16.value = '16px';
+    select.appendChild(opt16);
+
+    expect(findMatchingOption(select, '16.0px', true)).toBe('16px');
+  });
+});
+
+describe('Zero-width space tracking integration', () => {
+  it('verifies that zero-width space characters are parsed as parts of lines', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<span>\u200btext</span>';
+    expect(getEditorText(root)).toBe('\u200btext');
   });
 });

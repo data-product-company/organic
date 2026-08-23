@@ -19,7 +19,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { getCaretOffset, getLineAndColumnFromOffset, getEditorText } from './utils';
+import { getCaretOffset, getLineAndColumnFromOffset, getEditorText, rgbToHex, findMatchingOption } from './utils';
 
 // Inject print-only stylesheet to hide toolbars, status-bar, modals, etc., during printing
 const printStyle = document.createElement('style');
@@ -1474,64 +1474,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-function findMatchingOption(select: HTMLSelectElement, computedValue: string, isSize: boolean): string | null {
-  const clean = (val: string) => val.replace(/['"]/g, '').toLowerCase().trim();
-  const cleanComputed = clean(computedValue);
-
-  // 1. Direct match on clean string
-  for (let i = 0; i < select.options.length; i++) {
-    const optionVal = select.options[i].value;
-    if (clean(optionVal) === cleanComputed) {
-      return optionVal;
-    }
-  }
-
-  // 2. Token-based or substring matching
-  for (let i = 0; i < select.options.length; i++) {
-    const optionVal = select.options[i].value;
-    const cleanOption = clean(optionVal);
-
-    if (isSize) {
-      if (cleanComputed === cleanOption || parseFloat(cleanComputed) === parseFloat(cleanOption)) {
-        return optionVal;
-      }
-    } else {
-      const optionFamilies = cleanOption.split(',').map(f => f.trim());
-      const computedFamilies = cleanComputed.split(',').map(f => f.trim());
-
-      if (optionFamilies.some(of => computedFamilies.includes(of))) {
-        return optionVal;
-      }
-      if (optionFamilies.some(of => cleanComputed.includes(of))) {
-        return optionVal;
-      }
-    }
-  }
-
-  // 3. Fallback to keyword matching
-  if (!isSize) {
-    if (cleanComputed.includes('system-ui') || cleanComputed.includes('-apple-system') || cleanComputed.includes('sans-serif') || cleanComputed.includes('helvetica') || cleanComputed.includes('arial') || cleanComputed.includes('blinkmacsystemfont')) {
-      return "system-ui, -apple-system, sans-serif";
-    }
-    if (cleanComputed.includes('courier')) {
-      return "'Courier New', Courier, monospace";
-    }
-    if (cleanComputed.includes('times')) {
-      return "'Times New Roman', Times, serif";
-    }
-    if (cleanComputed.includes('georgia')) {
-      return "Georgia, serif";
-    }
-    if (cleanComputed.includes('garamond')) {
-      return "Garamond, 'EB Garamond', serif";
-    }
-    if (cleanComputed.includes('baskerville')) {
-      return "Baskerville, 'Times New Roman', serif";
-    }
-  }
-  return null;
-}
-
 function syncDropdownsWithCaret() {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
@@ -1570,15 +1512,6 @@ document.addEventListener('selectionchange', () => {
     }
   }
 });
-
-function rgbToHex(rgb: string): string {
-  const result = rgb.match(/\d+/g);
-  if (!result) return '#000000';
-  return "#" + result.map(x => {
-    const hex = parseInt(x).toString(16);
-    return hex.length === 1 ? "0" + hex : hex;
-  }).join('');
-}
 
 // Initialize status bar on startup
 updateStatus();

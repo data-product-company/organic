@@ -36,3 +36,7 @@ dist-ssr
 
 # Log and temp files
 *.log
+
+# Gemini CLI
+.gemini/
+*.skill
