@@ -1,18 +1,19 @@
-# Organic App Help
+# Organic Replay App Help
 
 Welcome to the Organic help documentation.
 
 ## Getting Started
 
-Organic is a minimalist, distraction-free document editor designed with formatting consistency, privacy, and cryptographic forensic integrity at its core. It is part of the **"Human, not A.I."** initiative, giving writers a way to mathematically prove their own human authorship.
+The Organic Replay App is a minimalist, distraction-free document editor designed with formatting consistency, privacy, and cryptographic forensic integrity at its core. It is part of the **"Human, not A.I."** initiative, giving writers a way to mathematically prove their own human authorship.
 
 ## Core Features
 
 - **Distraction-Free Environment**: A clean, highly-focused workspace designed to maximize writing productivity.
 - **Forensic Logging (.tsgr)**: Every single keystroke, deletion, composition, clipboard modification (copy/cut/paste), and undo/redo action is securely recorded in real-time to an adjacent, hidden SQLite companion database.
 - **Chronological Session Replay**: An integrated playback player that allows anyone to scrub through, inspect, and replay the exact character-by-character creation timeline of your document.
-- **Typography & Styling Controls**: Change font families (Georgia, Times New Roman, Garamond, Baskerville, Courier New, Sans-Serif), adjust font sizes (12px to 36px), and pick custom font colors dynamically.
+- **Typography & Styling Controls**: Access and apply any local system fonts available on your machine alongside standard serif and typewriter selections, adjust font sizes (12px to 36px), and pick custom font colors dynamically.
 - **Text Alignment & Formatting**: Seamlessly format text with Bold, Italic, Underline, and block-level alignments (Left, Center, Right, Justify) that translate perfectly in both the editor and playback engine.
+- **Native Printing Support**: Print your finalized document directly from within the app (via `CmdOrCtrl + P`), styled with a clean, print-only layout that automatically hides toolbars, status bars, and UI dialogs.
 - **Hyperlink Management**: Quickly insert, edit, or completely remove links from selected text blocks using the on-screen modal.
 - **Full Find & Replace Suite**: Real-time matched results tracking ("X of Y"), search query wrap-around, and sequential "Replace" or global "Replace All" actions.
 - **Share Bundle**: Instantly pack your saved document and its companion `.tsgr` forensic log into a timestamped `.zip` file in the same directory, simplifying sharing with reviewers.
@@ -57,9 +58,9 @@ Organic is a minimalist, distraction-free document editor designed with formatti
 To allow someone else (like an instructor, publisher, or editor) to replay your writing session and verify your human authorship:
 1. **Create a Share Bundle**: Click the **Share Bundle** button on the toolbar or press `CmdOrCtrl + Shift + P` to automatically generate a timestamped `.zip` package containing both your document and its hidden forensic `.tsgr` database.
 2. **Share the ZIP**: Share the generated ZIP file with your recipient.
-3. **Recipient Action**: The recipient unzips the bundle and opens the document file from within **Organic** (via the **Open** button or `CmdOrCtrl + O`).
+3. **Recipient Action**: The recipient unzips the bundle and opens the document file from within the **Organic Replay App** (via the **Open** button or `CmdOrCtrl + O`).
 
-   *Note on Opening in Organic*: Unlike traditional editors that only render static text, opening a document within Organic initiates an active forensic session. The app scans the surrounding directory, matches the document with its hidden `.tsgr` database, and reconstructs your keystroke history to activate the **Chronological Replay** (`CmdOrCtrl + R`) window.
+   *Note on Opening in the Organic Replay App*: Unlike traditional editors that only render static text, opening a document within the Organic Replay App initiates an active forensic session. The app scans the surrounding directory, matches the document with its hidden `.tsgr` database, and reconstructs your keystroke history to activate the **Chronological Replay** (`CmdOrCtrl + R`) window.
 
 *Note: If you share only the document without the `.tsgr` companion database, the recipient will still be able to open and read your text, but they will not see any chronological typing history. The replay will only show a single "Open" event with the finalized text.*
 
@@ -74,8 +75,8 @@ We save files with a `.txt` extension to guarantee absolute simplicity, portabil
 ### Why export specifically as Microsoft Word `.doc` files?
 We restrict direct export to the standard `.doc` format to keep the application incredibly lightweight, fast, and distraction-free. Generating complex, bloated layout structures inside a minimalist editor is unnecessary. Once your draft is exported, you can seamlessly open or import it into Microsoft Word, Google Docs, or LibreOffice to customize margins, headers, and advanced styling exactly to your liking.
 
-### What happens if a document is edited outside of Organic?
-* **For Authors**: If you open and edit your file in another text editor (like Word, Notepad, or an external A.I. tool), Organic will detect that the document's text has changed without any corresponding typing history. When you open the file back up in Organic, it will warn you that the document and its forensic log do not match, meaning your proof of human authorship (the chain of custody) is broken.
+### What happens if a document is edited outside of the Organic Replay App?
+* **For Authors**: If you open and edit your file in another text editor (like Word, Notepad, or an external A.I. tool), the Organic Replay App will detect that the document's text has changed without any corresponding typing history. When you open the file back up in the Organic Replay App, it will warn you that the document and its forensic log do not match, meaning your proof of human authorship (the chain of custody) is broken.
 * **For Reviewers**: When auditing a document, you can immediately tell if it has been tampered with. If someone tries to manually paste, insert, or modify text using an external program, the character-by-character Replay Session will fail to recreate the final document. The replay engine will raise an integrity flag, letting you know that the document has been modified outside the secure environment.
 
 ## ⚖️ License & Warranty Disclaimer
@@ -102,4 +103,4 @@ Here is what this means under **Sections 15 and 16** of the license agreement:
    * This includes general, special, incidental, or consequential damages (such as data loss, data corruption, or a failure of the program to operate with other software) arising out of your use or inability to use the program, even if the authors have been advised of the possibility of such damages.
 
 ---
-*Organic - Human, not A.I. Initiative*
+*Organic Replay: Human, not A.I. Initiative*

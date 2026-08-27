@@ -72,6 +72,7 @@ let currentPath: string | null = null;
 let lastSavedContent: string = "";
 let isDirty: boolean = false;
 let isGlobalStyleDirty: boolean = false;
+let isIntegrityMismatched: boolean = false;
 let lastSelection = { start: 0, end: 0 };
 let hasActiveSession = false;
 let isPasting = false;
@@ -510,6 +511,17 @@ async function openFile() {
 
     updateStatus();
 
+    // Run active file load integrity verification against the companion forensic log
+    const isIntegrityValid = await invoke<boolean>('verify_document_integrity', { content: fileContent }).catch((err) => {
+      console.error("Integrity check failed:", err);
+      return true;
+    });
+
+    isIntegrityMismatched = !isIntegrityValid;
+    if (isIntegrityMismatched) {
+      await showIntegrityModal();
+    }
+
     // Get the plain text from the rendered editor to preserve line breaks accurately
     const plainText = getEditorText(editor);
 
@@ -539,6 +551,7 @@ async function saveFile(): Promise<boolean> {
     currentPath = savedPath;
     lastSavedContent = editor.innerHTML;
     isGlobalStyleDirty = false;
+    isIntegrityMismatched = false;
     updateStatus();
     return true;
   } catch (err) {
@@ -611,6 +624,52 @@ function showCloseModal(): Promise<'save' | 'discard' | 'cancel'> {
     btnSave.addEventListener('click', onSave);
     btnDiscard.addEventListener('click', onDiscard);
     btnCancel.addEventListener('click', onCancel);
+  });
+}
+
+function showIntegrityModal(): Promise<void> {
+  return new Promise((resolve) => {
+    let modal = document.getElementById('integrity-modal') as HTMLElement;
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'integrity-modal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 10001;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      `;
+      modal.innerHTML = `
+        <div style="background: #1e1e1e; border: 1px solid #e06c75; border-radius: 6px; padding: 24px; max-width: 450px; width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); color: #abb2bf;">
+          <h3 style="margin-top: 0; color: #e06c75; display: flex; align-items: center; gap: 8px;">
+            ⚠️ Integrity Mismatch Detected!
+          </h3>
+          <p style="line-height: 1.5; font-size: 14px; margin-bottom: 20px;">
+            This document has been modified outside of the Organic Replay App.<br><br>
+            The document content and its forensic log (.tsgr) do not match, meaning your proof of human authorship (the chain of custody) is broken.
+          </p>
+          <div style="display: flex; justify-content: flex-end;">
+            <button id="integrity-ok" style="background: #e06c75; color: #1e1e1e; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">OK</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+    const okBtn = document.getElementById('integrity-ok') as HTMLButtonElement;
+    const onOk = () => {
+      modal.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      resolve();
+    };
+    okBtn.addEventListener('click', onOk);
   });
 }
 
@@ -698,6 +757,7 @@ async function closeFile(): Promise<boolean> {
     lastSavedContent = "";
     isDirty = false;
     isGlobalStyleDirty = false;
+    isIntegrityMismatched = false;
     hasActiveSession = false;
 
     // Reset editor styles to default
@@ -745,6 +805,7 @@ async function newFile() {
   hasActiveSession = true;
   isDirty = false;
   isGlobalStyleDirty = false;
+  isIntegrityMismatched = false;
 
   // Fall back to captured preferences, global preferences, or defaults
   const savedFont = currentSelectedFont || localStorage.getItem('organic-font-family') || DEFAULT_FONT_FAMILY;
@@ -809,8 +870,9 @@ function updateStatus() {
 
   const fileLabel = hasActiveSession ? (currentPath ? currentPath : 'Untitled') : 'No Document Open';
   const dirtyIndicator = isDirty ? ' * (Unsaved Changes)' : '';
-  statusLeft.textContent = `${fileLabel}${dirtyIndicator}`;
-  statusLeft.style.color = isDirty ? '#e06c75' : '#abb2bf'; // Subtle red if dirty
+  const integrityIndicator = isIntegrityMismatched ? ' ⚠️ [INTEGRITY MISMATCH]' : '';
+  statusLeft.textContent = `${fileLabel}${dirtyIndicator}${integrityIndicator}`;
+  statusLeft.style.color = isIntegrityMismatched ? '#e06c75' : (isDirty ? '#e06c75' : '#abb2bf'); // Highlight red for mismatch or dirty
 
   const zoomPercent = `${Math.round(currentZoom * 100)}%`;
   statusRight.innerHTML = `<span id="status-zoom" style="cursor: pointer; text-decoration: underline;" title="Click to reset zoom">Zoom: ${zoomPercent}</span> | Words: ${wordCount} | Chars: ${charCount}`;
