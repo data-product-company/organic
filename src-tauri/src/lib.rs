@@ -203,30 +203,44 @@ struct AppState {
 
 #[tauri::command]
 async fn open_document(state: tauri::State<'_, AppState>) -> Result<(String, String), String> {
-    let file = rfd::AsyncFileDialog::new()
-        .add_filter("Text & Word Documents", &["txt", "md", "html", "doc"])
-        .pick_file()
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Select Workspace Folder")
+        .pick_folder()
         .await;
 
-    if let Some(file) = file {
-        let path = file.path().to_string_lossy().into_owned();
-        let content = std::fs::read_to_string(file.path()).map_err(|e| e.to_string())?;
+    if let Some(folder) = folder {
+        let folder_path = folder.path();
+        
+        // Prompt the user to select the specific document they wish to open from this folder
+        let file = rfd::AsyncFileDialog::new()
+            .set_title("Select Document from Workspace")
+            .set_directory(folder_path)
+            .add_filter("Text & Word Documents", &["txt", "md", "html", "doc"])
+            .pick_file()
+            .await;
 
-        *state.current_doc_path.lock().unwrap() = Some(path.clone());
+        if let Some(file) = file {
+            let file_path = file.path();
+            let path_str = file_path.to_string_lossy().into_owned();
+            let content = std::fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
 
-        // Always ensure the temporary database is clean before proceeding
-        let _ = std::fs::remove_file(&state.temp_db_path);
+            *state.current_doc_path.lock().unwrap() = Some(path_str.clone());
 
-        // If a companion forensic file exists, copy it to the temporary workspace
-        let tsgr_path = get_tsgr_path(&path);
-        if tsgr_path.exists() {
-            std::fs::copy(&tsgr_path, &state.temp_db_path).map_err(|e| e.to_string())?;
+            // Always ensure the temporary database is clean before proceeding
+            let _ = std::fs::remove_file(&state.temp_db_path);
+
+            // If a companion forensic file exists, copy it to the temporary workspace
+            let tsgr_path = get_tsgr_path(&path_str);
+            if tsgr_path.exists() {
+                std::fs::copy(&tsgr_path, &state.temp_db_path).map_err(|e| e.to_string())?;
+            }
+            // Ensure the database structure is present (creates if not exists, or ensures table exists)
+            init_db(&state.temp_db_path)?;
+
+            Ok((path_str, content))
         } else {
+            Err("Cancelled".into())
         }
-        // Ensure the database structure is present (creates if not exists, or ensures table exists)
-        init_db(&state.temp_db_path)?;
-
-        Ok((path, content))
     } else {
         Err("Cancelled".into())
     }
@@ -241,25 +255,58 @@ async fn save_document(
     let file_path = match path {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let save_dialog = rfd::AsyncFileDialog::new()
-                .add_filter("Text Documents", &["txt", "md", "html"])
-                .save_file()
+            let folder_dialog = rfd::AsyncFileDialog::new()
+                .pick_folder()
                 .await;
             
-            match save_dialog {
-                Some(f) => f.path().to_owned(),
+            match folder_dialog {
+                Some(folder) => {
+                    let folder_path = folder.path();
+                    
+                    // Smart naming: parse first text line to name the document dynamically
+                    let cleaned_name = {
+                        let mut is_tag = false;
+                        let mut text = String::new();
+                        for c in content.chars() {
+                            if c == '<' {
+                                is_tag = true;
+                            } else if c == '>' {
+                                is_tag = false;
+                            } else if !is_tag {
+                                text.push(c);
+                            }
+                        }
+                        let first_line = text.lines().next().unwrap_or("").trim();
+                        let mut name_candidate = String::new();
+                        for c in first_line.chars().take(30) {
+                            if c.is_alphanumeric() || c == ' ' || c == '_' || c == '-' {
+                                name_candidate.push(c);
+                            }
+                        }
+                        let trimmed = name_candidate.trim().to_string();
+                        if trimmed.is_empty() {
+                            "Untitled".to_string()
+                        } else {
+                            trimmed
+                        }
+                    };
+                    
+                    folder_path.join(format!("{}.txt", cleaned_name))
+                }
                 None => return Err("Cancelled".into()),
             }
         }
     };
 
     let saved_path = file_path.to_string_lossy().into_owned();
-    std::fs::write(&file_path, content).map_err(|e| e.to_string())?;
+    std::fs::write(&file_path, &content).map_err(|e| e.to_string())?;
     *state.current_doc_path.lock().unwrap() = Some(saved_path.clone());
 
     // Copy current session database as a companion file
     let tsgr_path = get_tsgr_path(&saved_path);
-    std::fs::copy(&state.temp_db_path, &tsgr_path).map_err(|e| e.to_string())?;
+    std::fs::copy(&state.temp_db_path, &tsgr_path).map_err(|e| {
+        format!("Failed to write adjacent forensic companion file (.tsgr): {}", e)
+    })?;
     hide_file_on_windows(&tsgr_path);
 
     Ok(saved_path)
@@ -321,7 +368,9 @@ async fn close_document(state: tauri::State<'_, AppState>) -> Result<(), String>
 async fn sync_forensic_db(state: tauri::State<'_, AppState>) -> Result<(), String> {
     if let Some(ref path) = *state.current_doc_path.lock().unwrap() {
         let tsgr_path = get_tsgr_path(path);
-        std::fs::copy(&state.temp_db_path, &tsgr_path).map_err(|e| e.to_string())?;
+        std::fs::copy(&state.temp_db_path, &tsgr_path).map_err(|e| {
+            format!("Failed to sync forensic database (.tsgr): {}", e)
+        })?;
         hide_file_on_windows(&tsgr_path);
     }
     Ok(())
@@ -478,7 +527,7 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+N")
                 .build(app)?;
 
-            let open_item = MenuItemBuilder::with_id("open", "Open File")
+            let open_item = MenuItemBuilder::with_id("open", "Open Workspace...")
                 .accelerator("CmdOrCtrl+O")
                 .build(app)?;
 
@@ -889,7 +938,8 @@ mod tests {
     #[test]
     fn test_get_system_font_families() {
         let families = get_system_font_families();
-        assert!(families.len() >= 0);
+        // Verify the function executes successfully without panicking
+        let _ = families;
     }
 
     #[test]

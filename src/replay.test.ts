@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconstructDocumentUpTo, deleteTextAt, insertTextAt, ForensicEvent } from './replay';
+import { reconstructDocumentUpTo, deleteTextAt, insertTextAt, ForensicEvent, getFirstFailedIndex } from './replay';
 
 describe('Forensic Replay Engine', () => {
   it('reconstructs simple typed text sequences', () => {
@@ -575,5 +575,19 @@ describe('Forensic Replay Engine', () => {
       'With Organic Replay you can! Mathematically!!'
     );
     expect(finalText).toBe(expectedFinalText);
+  });
+
+  describe('getFirstFailedIndex', () => {
+    it('returns the 1-based index of the first event containing the Integrity mismatch check string', () => {
+      const mockEvents: ForensicEvent[] = [
+        { id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: null },
+        { id: 2, timestamp: 1001, row: 1, column: 1, event_type: 'input', content: 'Normal typing' },
+        { id: 3, timestamp: 1002, row: 1, column: 1, event_type: 'open', content: 'Integrity mismatch check. I added this line outside Organic Replay.' },
+        { id: 4, timestamp: 1003, row: 1, column: 1, event_type: 'open', content: 'Integrity mismatch check. another one' },
+      ];
+      expect(getFirstFailedIndex(mockEvents)).toBe(3);
+      expect(getFirstFailedIndex([])).toBe(0);
+      expect(getFirstFailedIndex([{ id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: 'safe content' }])).toBe(0);
+    });
   });
 });

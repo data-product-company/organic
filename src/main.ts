@@ -162,8 +162,6 @@ const btnPrint = document.getElementById('btn-print') as HTMLButtonElement;
 const btnNew = document.getElementById('btn-new') as HTMLButtonElement | null;
 const btnOpen = document.getElementById('btn-open') as HTMLButtonElement;
 const btnSave = document.getElementById('btn-save') as HTMLButtonElement;
-const btnExportWord = document.getElementById('btn-export-word') as HTMLButtonElement | null;
-const btnShareBundle = document.getElementById('btn-share-bundle') as HTMLButtonElement | null;
 const fontSelect = document.getElementById('font-select') as HTMLSelectElement | null;
 const fontSizeSelect = document.getElementById('font-size-select') as HTMLSelectElement | null;
 const colorPicker = document.getElementById('color-picker') as HTMLInputElement | null;
@@ -518,6 +516,8 @@ async function openFile() {
     });
 
     isIntegrityMismatched = !isIntegrityValid;
+    updateStatus();
+
     if (isIntegrityMismatched) {
       await showIntegrityModal();
     }
@@ -869,10 +869,15 @@ function updateStatus() {
   isDirty = hasActiveSession && (editor.innerHTML !== lastSavedContent || isGlobalStyleDirty);
 
   const fileLabel = hasActiveSession ? (currentPath ? currentPath : 'Untitled') : 'No Document Open';
+  const fileColor = (isIntegrityMismatched || isDirty) ? '#e06c75' : (hasActiveSession ? '#98c379' : '#abb2bf');
+  const styledFileLabel = `<span style="color: ${fileColor}; font-weight: bold;">${fileLabel}</span>`;
   const dirtyIndicator = isDirty ? ' * (Unsaved Changes)' : '';
-  const integrityIndicator = isIntegrityMismatched ? ' ⚠️ [INTEGRITY MISMATCH]' : '';
-  statusLeft.textContent = `${fileLabel}${dirtyIndicator}${integrityIndicator}`;
-  statusLeft.style.color = isIntegrityMismatched ? '#e06c75' : (isDirty ? '#e06c75' : '#abb2bf'); // Highlight red for mismatch or dirty
+  const integrityIndicator = isIntegrityMismatched 
+    ? ` | <span style="color: #e06c75; font-weight: bold;">**Integrity mismatch check**: failed</span>` 
+    : '';
+
+  statusLeft.innerHTML = `${styledFileLabel}${dirtyIndicator}${integrityIndicator}`;
+  statusLeft.style.color = '#abb2bf';
 
   const zoomPercent = `${Math.round(currentZoom * 100)}%`;
   statusRight.innerHTML = `<span id="status-zoom" style="cursor: pointer; text-decoration: underline;" title="Click to reset zoom">Zoom: ${zoomPercent}</span> | Words: ${wordCount} | Chars: ${charCount}`;
@@ -909,12 +914,6 @@ btnOpen.addEventListener('click', openFile);
 btnSave.addEventListener('click', saveFile);
 btnPrint.addEventListener('mousedown', (e) => e.preventDefault());
 btnPrint.addEventListener('click', () => printDocument());
-if (btnShareBundle) {
-  btnShareBundle.addEventListener('click', shareBundle);
-}
-if (btnExportWord) {
-  btnExportWord.addEventListener('click', exportToWord);
-}
 if (btnClose) {
   btnClose.addEventListener('click', closeFile);
 }
@@ -1576,6 +1575,16 @@ document.addEventListener('selectionchange', () => {
 });
 
 // Initialize status bar on startup
+// Initialize status bar and buttons on startup
+if (btnOpen) {
+  const iconElement = Array.from(btnOpen.childNodes).find(node => node.nodeType === Node.ELEMENT_NODE);
+  btnOpen.innerHTML = "";
+  if (iconElement) {
+    btnOpen.appendChild(iconElement);
+  }
+  btnOpen.appendChild(document.createTextNode(" Open Workspace"));
+  btnOpen.title = "Select the workspace first and then the file to open.";
+}
 updateStatus();
 
 // Initialize font color on startup and bind change handler

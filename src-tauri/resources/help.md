@@ -17,7 +17,7 @@ The Organic Replay App is a minimalist, distraction-free document editor designe
 - **Hyperlink Management**: Quickly insert, edit, or completely remove links from selected text blocks using the on-screen modal.
 - **Full Find & Replace Suite**: Real-time matched results tracking ("X of Y"), search query wrap-around, and sequential "Replace" or global "Replace All" actions.
 - **Share Bundle**: Instantly pack your saved document and its companion `.tsgr` forensic log into a timestamped `.zip` file in the same directory, simplifying sharing with reviewers.
-- **Interactive Status Bar**: Displays live word count, character count, active file name, and a visual unsaved changes indicator (`*`).
+- **Interactive Status Bar**: Displays live word count, character count, and a visual unsaved changes indicator (`*`). The active file name dynamically highlights in **green** when clean and saved, or **red** if there are unsaved changes or an integrity mismatch is detected.
 - **Microsoft Word Export**: Export formatted documents directly to Microsoft Word (`.doc`) with customized margins and style settings.
 - **Secure File Operations**: Automatic, non-obtrusive confirmation dialogs warning about unsaved modifications when closing a document or exiting the app.
 
@@ -25,7 +25,7 @@ The Organic Replay App is a minimalist, distraction-free document editor designe
 
 ### File Management
 - **New Document**: `CmdOrCtrl + N`
-- **Open Document**: `CmdOrCtrl + O`
+- **Open Workspace**: `CmdOrCtrl + O`
 - **Save Document**: `CmdOrCtrl + S`
 - **Print Document**: `CmdOrCtrl + P`
 - **Share Replay Bundle**: `CmdOrCtrl + Shift + P`
@@ -58,7 +58,7 @@ The Organic Replay App is a minimalist, distraction-free document editor designe
 To allow someone else (like an instructor, publisher, or editor) to replay your writing session and verify your human authorship:
 1. **Create a Share Bundle**: Click the **Share Bundle** button on the toolbar or press `CmdOrCtrl + Shift + P` to automatically generate a timestamped `.zip` package containing both your document and its hidden forensic `.tsgr` database.
 2. **Share the ZIP**: Share the generated ZIP file with your recipient.
-3. **Recipient Action**: The recipient unzips the bundle and opens the document file from within the **Organic Replay App** (via the **Open** button or `CmdOrCtrl + O`).
+3. **Recipient Action**: The recipient unzips the bundle and opens the document file from within the **Organic Replay App** (via the **Open Workspace** button or `CmdOrCtrl + O`).
 
    *Note on Opening in the Organic Replay App*: Unlike traditional editors that only render static text, opening a document within the Organic Replay App initiates an active forensic session. The app scans the surrounding directory, matches the document with its hidden `.tsgr` database, and reconstructs your keystroke history to activate the **Chronological Replay** (`CmdOrCtrl + R`) window.
 
@@ -78,6 +78,8 @@ We restrict direct export to the standard `.doc` format to keep the application 
 ### What happens if a document is edited outside of the Organic Replay App?
 * **For Authors**: If you open and edit your file in another text editor (like Word, Notepad, or an external A.I. tool), the Organic Replay App will detect that the document's text has changed without any corresponding typing history. When you open the file back up in the Organic Replay App, it will warn you that the document and its forensic log do not match, meaning your proof of human authorship (the chain of custody) is broken.
 * **For Reviewers**: When auditing a document, you can immediately tell if it has been tampered with. If someone tries to manually paste, insert, or modify text using an external program, the character-by-character Replay Session will fail to recreate the final document. The replay engine will raise an integrity flag, letting you know that the document has been modified outside the secure environment.
+  
+  In the **Forensic Audit Log** window, the timeline of events will be cleanly structured with numeric index identifiers (e.g., `#30`, `#31`). Standard document opens are truncated to the first 100 characters to keep the interface readable. However, if an external modification is detected, the status bar pinpoint-highlights the exact index where the mismatch was first introduced (e.g., `failed at #30`), and isolates the mismatch event so you only see the invalid edit sequence instead of the entire document.
 
 ## ⚖️ License & Warranty Disclaimer
 

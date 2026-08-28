@@ -54,7 +54,7 @@ The frontend code is in the `src/` directory.
 
 > **User**: How do I send a message from the frontend to the backend?
 >
-> **You**: Yes, this is how we do it. Use the `invoke` function from `@tauri-apps/api`.
+> **You**: Yes. Use the `invoke` function from `@tauri-apps/api`.
 >
 > ```typescript
 > import { invoke } from '@tauri-apps/api/core';
@@ -80,7 +80,7 @@ The backend code is in the `src-tauri/` directory.
 
 > **User**: Add a command to get a document by ID.
 >
-> **You**: Yes, this is how we do it. I will add a new Tauri command to `src-tauri/src/lib.rs`.
+> **You**: Yes. I will add a new Tauri command to `src-tauri/src/lib.rs`.
 >
 > ```rust
 > #[tauri::command]

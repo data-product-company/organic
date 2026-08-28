@@ -99,9 +99,22 @@ async function loadReplayData() {
       currentIndex = -1;
       return;
     }
-    statusTextEl.textContent = `Audit records loaded: ${events.length}`;
+
+    // Reconstruct final document state to verify overall replay integrity
+    const finalContent = reconstructDocumentUpTo(events.length - 1, events);
+    const isIntegrityValid = await invoke<boolean>("verify_document_integrity", { content: finalContent }).catch(() => true);
+    if (!isIntegrityValid) {
+      const firstFailedIndex = getFirstFailedIndex(events);
+      if (firstFailedIndex > 0) {
+        statusTextEl.innerHTML = `Audit records loaded: ${events.length} | <span style="color: #e06c75; font-weight: bold;">**Integrity mismatch check**: failed at #${firstFailedIndex}</span>`;
+      } else {
+        statusTextEl.innerHTML = `Audit records loaded: ${events.length} | <span style="color: #e06c75; font-weight: bold;">**Integrity mismatch check**: failed</span>`;
+      }
+    } else {
+      statusTextEl.innerHTML = `Audit records loaded: ${events.length} | <span style="color: #98c379; font-weight: bold;">**Integrity mismatch check**: passed</span>`;
+    }
     scrubber.max = (events.length - 1).toString();
-    renderAuditLog();
+    renderAuditLog(isIntegrityValid);
     setStep(0);
   } catch (err) {
     if (statusTextEl) {
@@ -110,7 +123,7 @@ async function loadReplayData() {
   }
 }
 
-function renderAuditLog() {
+function renderAuditLog(isIntegrityValid: boolean) {
   if (!auditListEl) return;
   const listEl = auditListEl;
   listEl.innerHTML = "";
@@ -120,9 +133,38 @@ function renderAuditLog() {
     item.id = `audit-item-${i}`;
     
     const date = new Date(ev.timestamp).toLocaleTimeString();
-    const safeContent = ev.content ? ` -> "${ev.content}"` : "";
-    item.textContent = `[${date}] ${ev.event_type.toUpperCase()} (L:${ev.row} C:${ev.column})${safeContent}`;
-    
+    let displayContent = ev.content || "";
+    if (displayContent.includes("Integrity mismatch check.")) {
+      const lines = displayContent.split("\n");
+      const idx = lines.findIndex(l => l.includes("Integrity mismatch check."));
+      if (idx !== -1) {
+        const resultLines = [lines[idx].trim()];
+        for (let j = idx + 1; j < lines.length; j++) {
+          const trimmed = lines[j].trim();
+          if (trimmed.length > 0) {
+            resultLines.push(trimmed);
+            break;
+          }
+        }
+        displayContent = resultLines.join(" ");
+      }
+    } else if (ev.event_type === "open") {
+      const firstLine = displayContent.split("\n")[0].trim();
+      if (displayContent.includes("\n") || firstLine.length > 100) {
+        displayContent = firstLine.substring(0, 100) + "...";
+      } else {
+        displayContent = firstLine;
+      }
+    }
+
+    if (!isIntegrityValid && displayContent.includes("Integrity mismatch check.")) {
+      displayContent = displayContent.replace("Integrity mismatch check.", "**Integrity mismatch check**: failed");
+    } else if (displayContent.includes("Integrity mismatch check.")) {
+      displayContent = displayContent.replace("Integrity mismatch check.", "**Integrity mismatch check**:");
+    }
+    const safeContent = ev.content ? ` -> "${displayContent}"` : "";
+    item.textContent = `#${i + 1} [${date}] ${ev.event_type.toUpperCase()} (L:${ev.row} C:${ev.column})${safeContent}`;
+
     item.addEventListener("click", () => {
       pausePlayback();
       setStep(i);
@@ -334,6 +376,10 @@ export function insertTextAt(lines: string[], r: number, c: number, text: string
     }
     lines.splice(r + insertLines.length - 1, 0, insertLines[insertLines.length - 1] + right);
   }
+}
+
+export function getFirstFailedIndex(eventList: ForensicEvent[]): number {
+  return eventList.findIndex(ev => ev.content && ev.content.includes("Integrity mismatch check.")) + 1;
 }
 
 function escapeHTML(str: string): string {
