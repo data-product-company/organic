@@ -6,6 +6,8 @@ Welcome to the Organic help documentation.
 
 The Organic Replay App is a minimalist, distraction-free document editor designed with formatting consistency, privacy, and cryptographic forensic integrity at its core. It is part of the **"Human, not A.I."** initiative, giving writers a way to mathematically prove their own human authorship.
 
+The application natively supports opening and saving standard document formats, specifically **Plain Text (`.txt`)**, **Markdown (`.md`)**, and **Microsoft Word (`.doc`)** files.
+
 ## Core Features
 
 - **Distraction-Free Environment**: A clean, highly-focused workspace designed to maximize writing productivity.

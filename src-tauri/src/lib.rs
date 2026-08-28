@@ -215,7 +215,7 @@ async fn open_document(state: tauri::State<'_, AppState>) -> Result<(String, Str
         let file = rfd::AsyncFileDialog::new()
             .set_title("Select Document from Workspace")
             .set_directory(folder_path)
-            .add_filter("Text & Word Documents", &["txt", "md", "html", "doc"])
+            .add_filter("Text, Markdown, & Word Documents types", &["txt", "md", "doc"])
             .pick_file()
             .await;
 
@@ -255,44 +255,14 @@ async fn save_document(
     let file_path = match path {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let folder_dialog = rfd::AsyncFileDialog::new()
-                .pick_folder()
+            let save_dialog = rfd::AsyncFileDialog::new()
+                .add_filter("Text & Word Documents", &["txt", "md", "doc"])
+                .set_file_name("Untitled.txt")
+                .save_file()
                 .await;
-            
-            match folder_dialog {
-                Some(folder) => {
-                    let folder_path = folder.path();
-                    
-                    // Smart naming: parse first text line to name the document dynamically
-                    let cleaned_name = {
-                        let mut is_tag = false;
-                        let mut text = String::new();
-                        for c in content.chars() {
-                            if c == '<' {
-                                is_tag = true;
-                            } else if c == '>' {
-                                is_tag = false;
-                            } else if !is_tag {
-                                text.push(c);
-                            }
-                        }
-                        let first_line = text.lines().next().unwrap_or("").trim();
-                        let mut name_candidate = String::new();
-                        for c in first_line.chars().take(30) {
-                            if c.is_alphanumeric() || c == ' ' || c == '_' || c == '-' {
-                                name_candidate.push(c);
-                            }
-                        }
-                        let trimmed = name_candidate.trim().to_string();
-                        if trimmed.is_empty() {
-                            "Untitled".to_string()
-                        } else {
-                            trimmed
-                        }
-                    };
-                    
-                    folder_path.join(format!("{}.txt", cleaned_name))
-                }
+
+            match save_dialog {
+                Some(file) => file.path().to_owned(),
                 None => return Err("Cancelled".into()),
             }
         }
