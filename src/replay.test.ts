@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconstructDocumentUpTo, deleteTextAt, insertTextAt, ForensicEvent, getFirstFailedIndex } from './replay';
+import { reconstructDocumentUpTo, deleteTextAt, insertTextAt, ForensicEvent, getFirstFailedIndex, verifyAllSavePoints, sha256 } from './replay';
 
 describe('Forensic Replay Engine', () => {
   it('reconstructs simple typed text sequences', () => {
@@ -153,6 +153,16 @@ describe('Forensic Replay Engine', () => {
     ];
     const result = reconstructDocumentUpTo(1, mockEvents);
     expect(result).toBe('helloworld');
+  });
+
+  it('ignores deleteContentBackward at column 1 (start of line) when not merging', () => {
+    const mockEvents: ForensicEvent[] = [
+      { id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'open', content: 'hello\nworld' },
+      // L:2 C:1 (c = 0 on line 2, so row = 2, column = 1). Since there is no next line to merge, it should do nothing.
+      { id: 2, timestamp: 1001, row: 2, column: 1, event_type: 'input', content: 'deleteContentBackward' },
+    ];
+    const result = reconstructDocumentUpTo(1, mockEvents);
+    expect(result).toBe('hello\nworld');
   });
 
   it('replays clipboard multiline paste correctly', () => {
@@ -588,6 +598,91 @@ describe('Forensic Replay Engine', () => {
       expect(getFirstFailedIndex(mockEvents)).toBe(3);
       expect(getFirstFailedIndex([])).toBe(0);
       expect(getFirstFailedIndex([{ id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: 'safe content' }])).toBe(0);
+    });
+  });
+
+  describe('verifyAllSavePoints step-by-step validator', () => {
+    it('passes verification when all dynamic signatures match save checkpoints', async () => {
+      const text1 = 'Hello';
+      const text2 = 'Hello World';
+      const sig1 = await sha256(text1);
+      const sig2 = await sha256(text2);
+
+      const mockEvents: ForensicEvent[] = [
+        { id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: null },
+        { id: 2, timestamp: 1001, row: 1, column: 1, event_type: 'input', content: 'Hello' },
+        { id: 3, timestamp: 1002, row: 1, column: 1, event_type: 'save', content: sig1 },
+        { id: 4, timestamp: 1003, row: 1, column: 6, event_type: 'input', content: ' World' },
+        { id: 5, timestamp: 1004, row: 1, column: 1, event_type: 'save', content: sig2 },
+      ];
+
+      const result = await verifyAllSavePoints(mockEvents);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('fails verification and returns the exact failed save event ID when tampering occurs', async () => {
+      const mockEvents: ForensicEvent[] = [
+        { id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: null },
+        { id: 2, timestamp: 1001, row: 1, column: 1, event_type: 'input', content: 'Untampered' },
+        { id: 3, timestamp: 1002, row: 1, column: 1, event_type: 'save', content: 'tampered-signature-hash' },
+      ];
+      const result = await verifyAllSavePoints(mockEvents);
+      expect(result.isValid).toBe(false);
+      expect(result.failedSaveIndex).toBe(3);
+    });
+
+    it('correctly tracks and returns all failed save event IDs when multiple tampered saves occur', async () => {
+      const mockEvents: ForensicEvent[] = [
+        { id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: null },
+        { id: 2, timestamp: 1001, row: 1, column: 1, event_type: 'input', content: 'Untampered' },
+        { id: 3, timestamp: 1002, row: 1, column: 1, event_type: 'save', content: 'tampered-signature-hash-1' },
+        { id: 4, timestamp: 1003, row: 1, column: 11, event_type: 'input', content: ' More input' },
+        { id: 5, timestamp: 1004, row: 1, column: 1, event_type: 'save', content: 'tampered-signature-hash-2' },
+      ];
+      const result = await verifyAllSavePoints(mockEvents);
+      expect(result.isValid).toBe(false);
+      expect(result.failedSaveIndices).toEqual([3, 5]);
+      expect(result.failedSaveIndex).toBe(3); // Backward compatibility check
+    });
+
+    it('fails verification at subsequent saves when tampering occurs externally before an open event', async () => {
+      const initialText = 'Hello';
+      const sig1 = await sha256(initialText);
+      const tamperedText = 'Hello tempered';
+      const sig2 = await sha256(tamperedText);
+
+      const mockEvents: ForensicEvent[] = [
+        { id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: null },
+        { id: 2, timestamp: 1001, row: 1, column: 1, event_type: 'input', content: 'Hello' },
+        { id: 3, timestamp: 1002, row: 1, column: 1, event_type: 'save', content: sig1 },
+        { id: 4, timestamp: 1003, row: 1, column: 1, event_type: 'close', content: null },
+        { id: 5, timestamp: 1004, row: 1, column: 1, event_type: 'open', content: tamperedText },
+        { id: 6, timestamp: 1005, row: 1, column: 15, event_type: 'save', content: sig2 },
+      ];
+
+      const result = await verifyAllSavePoints(mockEvents);
+      expect(result.isValid).toBe(false);
+      expect(result.failedSaveIndices).toEqual([6]);
+      expect(result.failedOpenIndices).toEqual([5]);
+    });
+
+    it('fails verification and lists failed open index when tampering occurs before open, even with no subsequent saves', async () => {
+      const initialText = 'Hello';
+      const sig1 = await sha256(initialText);
+      const tamperedText = 'Hello tempered';
+
+      const mockEvents: ForensicEvent[] = [
+        { id: 1, timestamp: 1000, row: 1, column: 1, event_type: 'new', content: null },
+        { id: 2, timestamp: 1001, row: 1, column: 1, event_type: 'input', content: 'Hello' },
+        { id: 3, timestamp: 1002, row: 1, column: 1, event_type: 'save', content: sig1 },
+        { id: 4, timestamp: 1003, row: 1, column: 1, event_type: 'close', content: null },
+        { id: 5, timestamp: 1004, row: 1, column: 1, event_type: 'open', content: tamperedText },
+      ];
+
+      const result = await verifyAllSavePoints(mockEvents);
+      expect(result.isValid).toBe(false);
+      expect(result.failedOpenIndices).toEqual([5]);
+      expect(result.failedSaveIndices).toEqual([]);
     });
   });
 });

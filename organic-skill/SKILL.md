@@ -13,6 +13,66 @@ Your primary directive is to provide concise, direct, and technically accurate a
 - **Project Context**: This is a Tauri application with a TypeScript/Vite frontend and a Rust backend.
 - **File Paths**: Assume all file paths are relative to the project root (`/Users/nikhilshah/rscode/organic`) unless otherwise specified.
 
+## Slash Commands
+
+You must respond to the following slash commands according to their specific instructions:
+
+- **/code-review**: Perform a comprehensive code review of the proposed or existing changes based on the criteria in the **Code Review Guidelines** section.
+  
+  **Required Output Structure**:
+  1. **Overall Status**: A clear statement of whether any actions are required (e.g., "⚠️ ACTION REQUIRED: 2 items need addressing" or "✅ NO ACTION REQUIRED").
+  2. **Checklists**: Render exact markdown checklists showing the status of each guideline:
+     - **Frontend Checklist**:
+       - [ ] Correctness (No visible bugs, works as intended) — *[Passed / Action Required / N/A]*
+       - [ ] Tauri Integration (Correct `@tauri-apps/api` usage) — *[Passed / Action Required / N/A]*
+       - [ ] Small Chunks (Incremental update) — *[Passed / Action Required / N/A]*
+       - [ ] No Proactive Refactoring (Stays in scope) — *[Passed / Action Required / N/A]*
+       - [ ] Testing (Accompanied by `vitest` tests) — *[Passed / Action Required / N/A]*
+       - [ ] Styling (Adheres to conventions) — *[Passed / Action Required / N/A]*
+     - **Backend Checklist**:
+       - [ ] Correctness (Logic implements requested functionality) — *[Passed / Action Required / N/A]*
+       - [ ] Tauri Commands (Registered correctly in `main.rs`) — *[Passed / Action Required / N/A]*
+       - [ ] Error Handling (Idiomatic usage of `Result`/`Option`) — *[Passed / Action Required / N/A]*
+       - [ ] Small Chunks (Incremental update) — *[Passed / Action Required / N/A]*
+       - [ ] No Proactive Refactoring (Stays in scope) — *[Passed / Action Required / N/A]*
+       - [ ] Testing (Unit or integration tests added) — *[Passed / Action Required / N/A]*
+       - [ ] Security (Parameterized queries with `rusqlite`) — *[Passed / Action Required / N/A]*
+  3. **Frontend Findings**: Detailed notes and specific actions required for the Frontend code.
+  4. **Backend Findings**: Detailed notes and specific actions required for the Backend code.
+
+- **/test-review**: Verify that there are no missing tests for new or modified features.
+  
+  **Required Output Structure**:
+  1. **Overall Status**: A clear statement of whether test addition actions are required (e.g., "⚠️ ACTION REQUIRED: Proposing new tests" or "✅ NO ACTION REQUIRED: Test coverage is sufficient").
+  2. **Checklist**: Render a markdown checklist of all analyzed areas:
+     - [ ] Frontend Test Coverage (Checks for modified TS/Vite files) — *[Sufficient / Needs Tests / N/A]*
+     - [ ] Backend Test Coverage (Checks for modified Rust files) — *[Sufficient / Needs Tests / N/A]*
+     - [ ] Edge Cases and Error Paths — *[Checked / Needs Tests / N/A]*
+  3. **Proposals**: Propose/suggest adding specific new tests (detailing test cases, inputs, and expected behaviors) if actions are required. **Do not** make any actual code modifications or write the tests until the user explicitly approves.
+
+- **/build-ready**: Check that all of the following are in sync and correct.
+
+  **MANDATORY FILE INSPECTION PROTOCOL**: 
+  You MUST NOT rely on cached context, memory, or guesswork. You are strictly REQUIRED to dynamically resolve the absolute path of the local project root directory (where the active `package.json` is located), and then physically open and read each of the following files using the `read_file` tool to inspect their actual contents in real-time before generating any part of your response:
+  1. `<project-root>/package.json`
+  2. `<project-root>/src-tauri/Cargo.toml`
+  3. `<project-root>/src-tauri/tauri.conf.json`
+  4. `<project-root>/TEST.md`
+  5. `<project-root>/src-tauri/resources/help.md`
+  
+  If you fail to call the appropriate file reading tool for each of these files, you are in direct violation of project guidelines and your response will be considered untrustworthy.
+
+  **Required Output Structure**:
+  1. **Overall Status**: A clear statement of whether version sync or document updates are required (e.g., "⚠️ ACTION REQUIRED: Version mismatch / documentation updates needed" or "✅ NO ACTION REQUIRED: Build ready").
+  2. **Checklist**: Render exact markdown checklists showing the status of each item, citing the exact values read directly from each file:
+     - [ ] `<project-root>/package.json` Version Check — *[Version X.Y.Z]* (Verified via real-time file read)
+     - [ ] `<project-root>/src-tauri/Cargo.toml` Version Check — *[Version X.Y.Z]* (Verified via real-time file read)
+     - [ ] `<project-root>/src-tauri/tauri.conf.json` Version Check — *[Version X.Y.Z]* (Verified via real-time file read)
+     - [ ] Multi-file Version Synchronization — *[In Sync / Mismatch]*
+     - [ ] `<project-root>/TEST.md` documentation matches current capabilities — *[Consistent / Outdated / N/A]* (Verified via real-time file read)
+     - [ ] `<project-root>/src-tauri/resources/help.md` documentation is consistent and accurate — *[Consistent / Outdated / N/A]* (Verified via real-time file read)
+  3. **Discrepancy Details**: If there is any mismatch or inconsistency, detail the exact lines and files that need updating.
+
 ## Development Workflow
 
 - **Small Chunks**: All code changes must be made in small, incremental chunks.
@@ -40,6 +100,16 @@ When asked to perform a code review, analyze the code against the following proj
 - **No Proactive Refactoring**: Does the change avoid refactoring code outside of its immediate scope?
 - **Testing**: Are new unit or integration tests added to cover the new logic?
 - **Security**: Are database queries using `rusqlite` parameterized to prevent SQL injection?
+
+## Version Management
+
+When making changes that affect the application's functionality, you must check and update the version number across the following files to ensure they are synchronized:
+
+1.  `package.json` (root)
+2.  `src-tauri/Cargo.toml`
+3.  `src-tauri/tauri.conf.json`
+
+Increment the version according to Semantic Versioning (SemVer) principles. For example, bug fixes increment the patch version (`0.1.x`), new features increment the minor version (`0.x.0`), and breaking changes increment the major version (`x.0.0`).
 
 ## Frontend (TypeScript / Vite)
 

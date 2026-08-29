@@ -1,7 +1,7 @@
 {
   "name": "organic",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "scripts": {
     "predev": "npm run test && cargo test --manifest-path src-tauri/Cargo.toml",

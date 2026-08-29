@@ -137,7 +137,11 @@ async fn verify_document_integrity(
     state: tauri::State<'_, AppState>,
     content: String,
 ) -> Result<bool, String> {
-    let conn = Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?;
+    let mut conn_lock = state.db_conn.lock().unwrap();
+    if conn_lock.is_none() {
+        *conn_lock = Some(Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?);
+    }
+    let conn = conn_lock.as_ref().unwrap();
     let mut stmt = conn.prepare(
         "SELECT content FROM forensic_log WHERE event_type = 'save' ORDER BY id DESC LIMIT 1"
     ).map_err(|e| e.to_string())?;
@@ -176,7 +180,17 @@ struct ForensicEvent {
 
 #[tauri::command]
 async fn get_forensic_events(state: tauri::State<'_, AppState>) -> Result<Vec<ForensicEvent>, String> {
-    let conn = Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?;
+    {
+        let current_path = state.current_doc_path.lock().unwrap();
+        if current_path.is_none() {
+            return Ok(Vec::new());
+        }
+    }
+    let mut conn_lock = state.db_conn.lock().unwrap();
+    if conn_lock.is_none() {
+        *conn_lock = Some(Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?);
+    }
+    let conn = conn_lock.as_ref().unwrap();
     let mut stmt = conn.prepare("SELECT id, timestamp, \"row\", \"column\", event_type, content FROM forensic_log ORDER BY timestamp ASC")
         .map_err(|e| e.to_string())?;
     let event_iter = stmt.query_map([], |row| {
@@ -199,12 +213,13 @@ async fn get_forensic_events(state: tauri::State<'_, AppState>) -> Result<Vec<Fo
 struct AppState {
     temp_db_path: String,
     current_doc_path: Mutex<Option<String>>,
+    db_conn: Mutex<Option<Connection>>,
 }
 
 #[tauri::command]
 async fn open_document(state: tauri::State<'_, AppState>) -> Result<(String, String), String> {
     let folder = rfd::AsyncFileDialog::new()
-        .set_title("Select Workspace Folder")
+        .set_title("Select Workspace Folder and click Open")
         .pick_folder()
         .await;
 
@@ -225,6 +240,9 @@ async fn open_document(state: tauri::State<'_, AppState>) -> Result<(String, Str
             let content = std::fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
 
             *state.current_doc_path.lock().unwrap() = Some(path_str.clone());
+
+            // Drop active persistent connection to release database file lock before filesystem operations
+            *state.db_conn.lock().unwrap() = None;
 
             // Always ensure the temporary database is clean before proceeding
             let _ = std::fs::remove_file(&state.temp_db_path);
@@ -255,15 +273,26 @@ async fn save_document(
     let file_path = match path {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let save_dialog = rfd::AsyncFileDialog::new()
-                .add_filter("Text & Word Documents", &["txt", "md", "doc"])
-                .set_file_name("Untitled.txt")
-                .save_file()
+            let folder = rfd::AsyncFileDialog::new()
+                .set_title("Select Workspace Folder and click Open")
+                .pick_folder()
                 .await;
 
-            match save_dialog {
-                Some(file) => file.path().to_owned(),
-                None => return Err("Cancelled".into()),
+            if let Some(folder) = folder {
+                let folder_path = folder.path();
+                let save_dialog = rfd::AsyncFileDialog::new()
+                    .set_title("Save Document to Workspace")
+                    .set_directory(folder_path)
+                    .add_filter("Text, Markdown, & Word Documents types", &["txt", "md", "doc"])
+                    .set_file_name("Untitled.txt")
+                    .save_file()
+                    .await;
+                match save_dialog {
+                    Some(file) => file.path().to_owned(),
+                    None => return Err("Cancelled".into()),
+                }
+            } else {
+                return Err("Cancelled".into());
             }
         }
     };
@@ -322,12 +351,15 @@ async fn export_to_word(
 #[tauri::command]
 async fn close_document(state: tauri::State<'_, AppState>) -> Result<(), String> {
     *state.current_doc_path.lock().unwrap() = None;
+    *state.db_conn.lock().unwrap() = None;
     // Attempt to remove the file. If it fails, clear the table instead to ensure a clean state.
     if let Err(e) = std::fs::remove_file(&state.temp_db_path) {
         eprintln!("Failed to remove temporary database file {}: {}. Attempting to clear table instead.", &state.temp_db_path, e);
+        let mut conn_lock = state.db_conn.lock().unwrap();
         let conn = Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM forensic_log", [])
             .map_err(|e| format!("Failed to clear forensic_log table: {}", e))?;
+        *conn_lock = Some(conn);
     }
     // Ensure the database structure is present (creates if removed, or ensures table exists if not removed)
     init_db(&state.temp_db_path)?;
@@ -355,7 +387,11 @@ async fn log_forensic_event(
     event_type: String,
     content: Option<String>,
 ) -> Result<(), String> {
-    let conn = Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?;
+    let mut conn_lock = state.db_conn.lock().unwrap();
+    if conn_lock.is_none() {
+        *conn_lock = Some(Connection::open(&state.temp_db_path).map_err(|e| e.to_string())?);
+    }
+    let conn = conn_lock.as_ref().unwrap();
     conn.execute(
         "INSERT INTO forensic_log (timestamp, \"row\", \"column\", event_type, content)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -475,6 +511,7 @@ pub fn run() {
         .manage(AppState {
             temp_db_path: temp_db_path.clone(),
             current_doc_path: Mutex::new(None),
+            db_conn: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -1057,5 +1094,82 @@ mod tests {
         }
         assert!(!matched);
         let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[test]
+    fn test_sqlite_transaction_stress_load() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join("test_sqlite_stress.db").to_string_lossy().into_owned();
+        let _ = std::fs::remove_file(&db_path);
+
+        init_db(&db_path).unwrap();
+        
+        // Simulating the persistent connection model
+        let conn = Connection::open(&db_path).unwrap();
+
+        // 1. Stress Test: 5,000 sequential rapid-fire transactions (e.g. rapid keypresses)
+        let num_inserts = 5000;
+        let start_time = std::time::Instant::now();
+
+        for i in 0..num_inserts {
+            conn.execute(
+                "INSERT INTO forensic_log (timestamp, \"row\", \"column\", event_type, content)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    1234567890 + i as i64,
+                    1,
+                    (i % 80) as i32,
+                    "input",
+                    "a"
+                ],
+            ).unwrap();
+        }
+
+        let elapsed_sequential = start_time.elapsed();
+        println!("Inserted {} sequential events in {:?}", num_inserts, elapsed_sequential);
+
+        // 2. Stress Test: Gigantic paste operation (100,000 characters)
+        let gigantic_paste_content = "a".repeat(100_000);
+        let start_paste = std::time::Instant::now();
+        conn.execute(
+            "INSERT INTO forensic_log (timestamp, \"row\", \"column\", event_type, content)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                2000000000,
+                1,
+                0,
+                "clipboard_paste",
+                Some(gigantic_paste_content.clone())
+            ],
+        ).unwrap();
+        let elapsed_paste = start_paste.elapsed();
+        println!("Pasted 100,000 characters in {:?}", elapsed_paste);
+
+        // Validate count of elements
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM forensic_log").unwrap();
+        let count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(count, num_inserts + 1);
+
+        // Validate retrieved content of the gigantic paste
+        let mut stmt_paste = conn.prepare("SELECT content FROM forensic_log WHERE event_type = 'clipboard_paste'").unwrap();
+        let retrieved_paste: String = stmt_paste.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(retrieved_paste.len(), 100_000);
+
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[test]
+    fn test_persistent_connection_lock_release() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join("test_lock_release.db").to_string_lossy().into_owned();
+        let _ = std::fs::remove_file(&db_path);
+
+        init_db(&db_path).unwrap();
+
+        let db_conn = Mutex::new(Some(Connection::open(&db_path).unwrap()));
+        *db_conn.lock().unwrap() = None;
+
+        let remove_result = std::fs::remove_file(&db_path);
+        assert!(remove_result.is_ok());
     }
 }

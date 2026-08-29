@@ -499,7 +499,7 @@ async function openFile() {
 
     editor.innerHTML = fileContent;
     editor.contentEditable = "true";
-    lastSavedContent = fileContent;
+    lastSavedContent = editor.innerHTML;
     hasActiveSession = true;
     isGlobalStyleDirty = false;
     // Place cursor at the end for existing documents
@@ -510,7 +510,7 @@ async function openFile() {
     updateStatus();
 
     // Run active file load integrity verification against the companion forensic log
-    const isIntegrityValid = await invoke<boolean>('verify_document_integrity', { content: fileContent }).catch((err) => {
+    const isIntegrityValid = await invoke<boolean>('verify_document_integrity', { content: getEditorText(editor) }).catch((err) => {
       console.error("Integrity check failed:", err);
       return true;
     });
@@ -539,7 +539,7 @@ async function saveFile(): Promise<boolean> {
   try {
     if (!hasActiveSession) return false;
     // Log document save checkpoint BEFORE writing to disk with content signature
-    const signature = await invoke<string>('generate_content_signature', { content: editor.innerHTML });
+    const signature = await invoke<string>('generate_content_signature', { content: getEditorText(editor) });
     const { line, column } = getLineAndColumnFromOffset(getEditorText(editor), 0);
     await logForensicEvent('save', line, column, signature);
 
@@ -552,6 +552,8 @@ async function saveFile(): Promise<boolean> {
     lastSavedContent = editor.innerHTML;
     isGlobalStyleDirty = false;
     isIntegrityMismatched = false;
+    await invoke('sync_forensic_db');
+    await emit('session-changed');
     updateStatus();
     return true;
   } catch (err) {
@@ -744,6 +746,7 @@ async function closeFile(): Promise<boolean> {
     if (isDirty && !savedOrDiscarded) {
       // Wiped/Discarded: do NOT log 'close' or sync to companion .tsgr
       await invoke('close_document');
+      await emit('session-changed');
     } else if (hasActiveSession) {
       const { line, column } = getLineAndColumnFromOffset(getEditorText(editor), 0);
       await logForensicEvent('close', line, column, null);
@@ -1360,7 +1363,7 @@ editor.addEventListener('beforeinput', (e: any) => {
   }
   lastSelection = getSelectionCharacterOffsetWithin(editor);
   // If text is selected, this is a replacement (pasted or rewritten by Apple Tools)
-    let replaceOffset = lastSelection.start;
+  let replaceOffset = lastSelection.start;
   let selectedText = document.getSelection()?.toString() || "";
   if (!selectedText && e.getTargetRanges && e.getTargetRanges().length > 0) {
     try {
@@ -1582,7 +1585,7 @@ if (btnOpen) {
   if (iconElement) {
     btnOpen.appendChild(iconElement);
   }
-  btnOpen.appendChild(document.createTextNode(" Open Workspace"));
+  btnOpen.appendChild(document.createTextNode(" Open"));
   btnOpen.title = "Select the workspace first and then the file to open.";
 }
 updateStatus();
