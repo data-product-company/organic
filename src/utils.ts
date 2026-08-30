@@ -24,11 +24,13 @@ export function getCaretOffset(root: HTMLElement, targetNode: Node, targetOffset
 
     if (node.nodeType === Node.TEXT_NODE) {
       if (node === targetNode) {
-        offset += targetOffset;
+        const textBefore = (node.textContent || "").slice(0, targetOffset).replace(/\u200b/g, "");
+        offset += textBefore.length;
         found = true;
         return;
       }
-      offset += node.textContent?.length || 0;
+      const textContent = (node.textContent || "").replace(/\u200b/g, "");
+      offset += textContent.length;
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const element = node as HTMLElement;
       const name = element.tagName.toUpperCase();
@@ -87,7 +89,8 @@ export function getEditorLines(root: HTMLElement): string[] {
 
   function traverse(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
-      lines[lines.length - 1] += node.textContent || "";
+      const cleanText = (node.textContent || "").replace(/\u200b/g, "");
+      lines[lines.length - 1] += cleanText;
       if ((node.textContent || "").length > 0) {
         blockStarted = false;
       }

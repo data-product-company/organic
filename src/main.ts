@@ -210,14 +210,32 @@ function setSelectionByCharacterOffset(root: HTMLElement, start: number, end: nu
     if (currentOffset > end) return;
 
     if (node.nodeType === Node.TEXT_NODE) {
-      const len = node.textContent?.length || 0;
+      const len = (node.textContent || "").replace(/\u200b/g, "").length;
       if (startNode === null && currentOffset + len >= start) {
         startNode = node;
-        startOffset = start - currentOffset;
+        let cleanIdx = 0;
+        let domIdx = 0;
+        const text = node.textContent || "";
+        while (domIdx < text.length && cleanIdx < start - currentOffset) {
+          if (text[domIdx] !== '\u200b') {
+            cleanIdx++;
+          }
+          domIdx++;
+        }
+        startOffset = domIdx;
       }
       if (endNode === null && currentOffset + len >= end) {
         endNode = node;
-        endOffset = end - currentOffset;
+        let cleanIdx = 0;
+        let domIdx = 0;
+        const text = node.textContent || "";
+        while (domIdx < text.length && cleanIdx < end - currentOffset) {
+          if (text[domIdx] !== '\u200b') {
+            cleanIdx++;
+          }
+          domIdx++;
+        }
+        endOffset = domIdx;
       }
       currentOffset += len;
     } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -1364,7 +1382,7 @@ editor.addEventListener('beforeinput', (e: any) => {
   lastSelection = getSelectionCharacterOffsetWithin(editor);
   // If text is selected, this is a replacement (pasted or rewritten by Apple Tools)
   let replaceOffset = lastSelection.start;
-  let selectedText = document.getSelection()?.toString() || "";
+  let selectedText = (document.getSelection()?.toString() || "").replace(/\u200b/g, "");
   if (!selectedText && e.getTargetRanges && e.getTargetRanges().length > 0) {
     try {
       const range = e.getTargetRanges()[0];
@@ -1372,7 +1390,7 @@ editor.addEventListener('beforeinput', (e: any) => {
       const domRange = document.createRange();
       domRange.setStart(range.startContainer, range.startOffset);
       domRange.setEnd(range.endContainer, range.endOffset);
-      selectedText = domRange.toString();
+      selectedText = domRange.toString().replace(/\u200b/g, "");
     } catch (err) {
       // Fallback
     }
@@ -1438,21 +1456,21 @@ editor.addEventListener('input', (e: any) => {
 editor.addEventListener('copy', () => {
   const sel = getSelectionCharacterOffsetWithin(editor);
   const { line, column } = getLineAndColumnFromOffset(getEditorText(editor), sel.start);
-  const selection = document.getSelection()?.toString() || "";
+  const selection = (document.getSelection()?.toString() || "").replace(/\u200b/g, "");
   logForensicEvent('clipboard_copy', line, column, selection);
 });
 
 editor.addEventListener('cut', () => {
   const sel = getSelectionCharacterOffsetWithin(editor);
   const { line, column } = getLineAndColumnFromOffset(getEditorText(editor), sel.start);
-  logForensicEvent('clipboard_cut', line, column, document.getSelection()?.toString() || "");
+  logForensicEvent('clipboard_cut', line, column, (document.getSelection()?.toString() || "").replace(/\u200b/g, ""));
 });
 
 editor.addEventListener('paste', (e: any) => {
   e.preventDefault();
   isPasting = true;
   const sel = getSelectionCharacterOffsetWithin(editor);
-  const pastedText = e.clipboardData?.getData('text') || "";
+  const pastedText = (e.clipboardData?.getData('text') || "").replace(/\u200b/g, "");
   const pastedHtml = e.clipboardData?.getData('text/html');
 
   let cleanHtml = "";

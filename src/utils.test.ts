@@ -214,9 +214,46 @@ describe('findMatchingOption dropdown helper', () => {
 });
 
 describe('Zero-width space tracking integration', () => {
-  it('verifies that zero-width space characters are parsed as parts of lines', () => {
+  it('verifies that zero-width space characters are ignored and stripped from editor lines', () => {
     const root = document.createElement('div');
     root.innerHTML = '<span>\u200btext</span>';
-    expect(getEditorText(root)).toBe('\u200btext');
+    expect(getEditorText(root)).toBe('text');
+  });
+
+  it('ignores nested styled zero-width spaces in getCaretOffset', () => {
+    const root = document.createElement('div');
+    const span1 = document.createElement('span');
+    span1.textContent = 'text';
+    const span2 = document.createElement('span');
+    span2.style.color = 'red';
+    span2.textContent = '\u200b\u200b';
+    const span3 = document.createElement('span');
+    const textNode3 = document.createTextNode('more');
+    span3.appendChild(textNode3);
+
+    root.appendChild(span1);
+    root.appendChild(span2);
+    root.appendChild(span3);
+
+    expect(getCaretOffset(root, textNode3, 2)).toBe(6);
+  });
+
+  it('collapses nested formatting-only block structures in getEditorLines', () => {
+    const root = document.createElement('div');
+    const div1 = document.createElement('div');
+    div1.appendChild(document.createTextNode('line 1'));
+    const div2 = document.createElement('div');
+    const span = document.createElement('span');
+    span.style.fontFamily = 'Courier';
+    span.textContent = '\u200b\u200b';
+    div2.appendChild(span);
+    const div3 = document.createElement('div');
+    div3.appendChild(document.createTextNode('line 2'));
+
+    root.appendChild(div1);
+    root.appendChild(div2);
+    root.appendChild(div3);
+
+    expect(getEditorLines(root)).toEqual(['line 1', '', 'line 2']);
   });
 });
