@@ -50,28 +50,41 @@ You must respond to the following slash commands according to their specific ins
      - [ ] Edge Cases and Error Paths — *[Checked / Needs Tests / N/A]*
   3. **Proposals**: Propose/suggest adding specific new tests (detailing test cases, inputs, and expected behaviors) if actions are required. **Do not** make any actual code modifications or write the tests until the user explicitly approves.
 
-- **/build-ready**: Check that all of the following are in sync and correct.
+- **/build-ready**: Verify that all version numbers, macOS plist configurations, and documentation are synchronized and up-to-date before a new build.
 
   **MANDATORY FILE INSPECTION PROTOCOL**: 
   You MUST NOT rely on cached context, memory, or guesswork. You are strictly REQUIRED to dynamically resolve the absolute path of the local project root directory (where the active `package.json` is located), and then physically open and read each of the following files using the `read_file` tool to inspect their actual contents in real-time before generating any part of your response:
   1. `<project-root>/package.json`
   2. `<project-root>/src-tauri/Cargo.toml`
   3. `<project-root>/src-tauri/tauri.conf.json`
-  4. `<project-root>/TEST.md`
-  5. `<project-root>/src-tauri/resources/help.md`
+  4. `<project-root>/src-tauri/Info.plist` (or equivalent macOS config)
+  5. `<project-root>/src-tauri/Entitlements.plist` (or equivalent macOS config)
+  6. `<project-root>/TEST.md`
+  7. `<project-root>/src-tauri/resources/help.md`
   
-  If you fail to call the appropriate file reading tool for each of these files, you are in direct violation of project guidelines and your response will be considered untrustworthy.
+  If you fail to call the appropriate file reading tool for each of these files (or confirm their non-existence if applicable), you are in direct violation of project guidelines and your response will be considered untrustworthy.
+
+  **Execution Workflow**:
+  You MUST follow these steps precisely:
+  1.  **Resolve Paths**: Dynamically resolve the absolute path of the local project root.
+  2.  **Inspect Files**: Physically read the 7 files listed in the protocol above using the `read_file` tool.
+  3.  **Compare versions**: Extract versions from `package.json`, `Cargo.toml` (under `[package]`), and `tauri.conf.json` (under `package.version`) and verify they are identical.
+  4.  **Verify plist configurations**: Review the contents of `Info.plist` and `Entitlements.plist`. Verify that bundle identifiers, hardware permissions (e.g., network, camera), and macOS sandbox settings are correctly configured and match the application's actual capabilities and recent changes.
+  5.  **Review documentation**: Review `TEST.md` and `help.md` to ensure they are up-to-date and accurate with respect to current features.
+  6.  **Construct the Output**: Generate the report strictly following the `Required Output Structure` below, ensuring all checklist items have a completed status.
 
   **Required Output Structure**:
-  1. **Overall Status**: A clear statement of whether version sync or document updates are required (e.g., "⚠️ ACTION REQUIRED: Version mismatch / documentation updates needed" or "✅ NO ACTION REQUIRED: Build ready").
+  1. **Overall Status**: A clear statement of whether version sync, plist updates, or document updates are required (e.g., "⚠️ ACTION REQUIRED: Version mismatch / plist updates needed / documentation updates needed" or "✅ NO ACTION REQUIRED: Build ready").
   2. **Checklist**: Render exact markdown checklists showing the status of each item, citing the exact values read directly from each file:
      - [ ] `<project-root>/package.json` Version Check — *[Version X.Y.Z]* (Verified via real-time file read)
      - [ ] `<project-root>/src-tauri/Cargo.toml` Version Check — *[Version X.Y.Z]* (Verified via real-time file read)
      - [ ] `<project-root>/src-tauri/tauri.conf.json` Version Check — *[Version X.Y.Z]* (Verified via real-time file read)
      - [ ] Multi-file Version Synchronization — *[In Sync / Mismatch]*
+     - [ ] `<project-root>/src-tauri/Entitlements.plist` Check — *[In Sync / Mismatch / N/A]* (Verified via real-time file read)
+     - [ ] `<project-root>/src-tauri/Info.plist` Check — *[In Sync / Mismatch / N/A]* (Verified via real-time file read)
      - [ ] `<project-root>/TEST.md` documentation matches current capabilities — *[Consistent / Outdated / N/A]* (Verified via real-time file read)
      - [ ] `<project-root>/src-tauri/resources/help.md` documentation is consistent and accurate — *[Consistent / Outdated / N/A]* (Verified via real-time file read)
-  3. **Discrepancy Details**: If there is any mismatch or inconsistency, detail the exact lines and files that need updating.
+  3. **Discrepancy Details**: If there is any mismatch, inconsistency, or configuration issue (e.g., out-of-sync versions, missing plist permissions, or outdated documentation), detail the exact files, lines, and updates required.
 
 ## Development Workflow
 
